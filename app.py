@@ -8,15 +8,14 @@ import shutil
 import sys
 import tempfile
 import threading
-import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from urllib.request import Request, urlopen
 
-from multi_ai import AGENTS, implement_recommendation, run_council
+from multi_ai import AGENTS, CODING_AGENTS
 from project_chat import ProjectChat
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 REPO = "jwjp/agent-council"
 ASSET = "AgentCouncil.exe"
 CONFIG = Path(os.getenv("LOCALAPPDATA", Path.home())) / "AgentCouncil" / "settings.json"
@@ -61,238 +60,123 @@ class App:
     def __init__(self, root):
         self.root = root
         self.events = queue.Queue()
-        self.active = {}
-        self.busy = False
         self.updating = False
-        self.runs = {}
-        self.documents = {}
-        self.chat = None
         try:
-            self.config = json.loads(CONFIG.read_text(encoding="utf-8"))
+            config = json.loads(CONFIG.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            self.config = {}
-        self.lang = tk.StringVar(value=self.config.get("language", "English"))
-        self.folder = tk.StringVar(value=self.config.get("folder", str(Path.home())))
-        self.agents = {name: tk.BooleanVar(value=name in self.config.get("agents", [a for a in AGENTS if shutil.which(a)]))
-                       for name in AGENTS}
+            config = {}
+        self.lang = config.get("language", "English")
+        folder = Path(config.get("folder") or Path.home()).expanduser()
+        self.folder = (folder if folder.is_dir() else Path.home()).resolve()
+        self.coder = config.get("coder", "claude")
+        if self.coder not in CODING_AGENTS:
+            self.coder = CODING_AGENTS[0]
+        self.reviewers = [name for name in AGENTS if name in config.get("reviewers", []) and name != self.coder]
         root.title(f"Agent Council {VERSION}")
-        root.geometry("850x700")
-        root.minsize(650, 530)
+        root.geometry("900x720")
+        root.minsize(640, 500)
         self.body = ttk.Frame(root, padding=16)
         self.body.pack(fill="both", expand=True)
-        self.build()
-        self.refresh_runs()
+        self.header = ttk.Frame(self.body)
+        self.header.pack(fill="x")
+        ttk.Label(self.header, text="Agent Council", font=("Segoe UI", 20, "bold")).pack(side="left")
+        self.settings_button = ttk.Button(self.header, command=self.settings)
+        self.settings_button.pack(side="right")
+        self.update_button = ttk.Button(self.header, command=self.update)
+        self.update_button.pack(side="right", padx=8)
+        self.folder_label = ttk.Label(self.body)
+        self.folder_label.pack(anchor="w", pady=(4, 0))
+        self.chat = None
+        self.build_chat(config.get("auto", True))
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.after(200, self.poll)
 
     def t(self, english, korean):
-        return korean if self.lang.get() == "한국어" else english
+        return korean if self.lang == "한국어" else english
 
-    def build(self):
-        t = self.t
-        header = ttk.Frame(self.body)
-        header.pack(fill="x")
-        ttk.Label(header, text="Agent Council", font=("Segoe UI", 20, "bold")).pack(side="left")
-        language = ttk.Combobox(header, textvariable=self.lang, values=("English", "한국어"), state="readonly", width=10)
-        language.pack(side="right")
-        language.bind("<<ComboboxSelected>>", lambda _: self.rebuild())
-        settings = ttk.LabelFrame(self.body, text=t("Settings", "설정"), padding=10)
-        settings.pack(fill="x", pady=8)
-        row = ttk.Frame(settings)
-        row.pack(fill="x")
-        ttk.Label(row, text=t("Project folder", "프로젝트 폴더")).pack(side="left", padx=(0, 8))
-        entry = ttk.Entry(row, textvariable=self.folder)
-        entry.pack(side="left", fill="x", expand=True)
-        entry.bind("<FocusOut>", lambda _: (self.save(), self.refresh_runs()))
-        ttk.Button(row, text=t("Browse", "찾아보기"), command=self.pick).pack(side="right", padx=(8, 0))
-        row = ttk.Frame(settings)
-        row.pack(fill="x", pady=(8, 0))
-        for name in AGENTS:
-            ttk.Checkbutton(row, text=NAMES[name], variable=self.agents[name], command=self.save).pack(side="left", padx=3)
-        ttk.Label(settings, text=t("Checked agents are connected using their local CLI sign-in.",
-                                   "선택한 에이전트를 로컬 CLI 로그인으로 연결합니다. 선택을 해제하면 앱 연결이 끊깁니다.")).pack(anchor="w")
-        ttk.Label(self.body, text=t("Ask the council", "질문 입력")).pack(anchor="w")
-        self.question = tk.Text(self.body, height=4, wrap="word")
-        self.question.pack(fill="x")
-        row = ttk.Frame(self.body)
-        row.pack(fill="x", pady=8)
-        self.run_button = ttk.Button(row, text=t("Run council", "회의 시작"), command=self.run)
-        self.run_button.pack(side="left")
-        self.implement_button = ttk.Button(row, text=t("Implement recommendation", "추천안으로 진행"), command=self.implement)
-        self.implement_button.pack(side="left", padx=8)
-        ttk.Button(row, text=t("Project chat", "프로젝트 채팅"), command=self.open_chat).pack(side="left")
-        self.update_button = ttk.Button(row, text=t("Check for updates", "업데이트 확인"), command=self.update)
-        self.update_button.pack(side="right")
-        self.status = ttk.Label(self.body, text=t("Ready", "준비"))
-        self.status.pack(anchor="w")
-        self.bar = ttk.Progressbar(self.body, mode="indeterminate")
-        self.bar.pack(fill="x", pady=4)
-        self.table = ttk.Treeview(self.body, columns=("agent", "state", "elapsed"), show="headings", height=5)
-        for key, label, width in (("agent", t("Agent", "에이전트"), 155),
-                                  ("state", t("Status", "상태"), 450), ("elapsed", t("Elapsed", "경과"), 70)):
-            self.table.heading(key, text=label)
-            self.table.column(key, width=width)
-        self.table.tag_configure("success", foreground="#167640")
-        self.table.tag_configure("failure", foreground="#b32929")
-        self.table.pack(fill="x")
-        results = ttk.Frame(self.body)
-        results.pack(fill="x", pady=(8, 0))
-        self.run_picker = ttk.Combobox(results, state="readonly", width=33)
-        self.run_picker.pack(side="left")
-        self.run_picker.bind("<<ComboboxSelected>>", lambda _: self.load_run())
-        self.document_picker = ttk.Combobox(results, state="readonly", width=36)
-        self.document_picker.pack(side="left", padx=8)
-        self.document_picker.bind("<<ComboboxSelected>>", lambda _: self.show(self.documents[self.document_picker.get()]))
-        self.output = tk.Text(self.body, wrap="word", state="disabled")
-        self.output.pack(fill="both", expand=True, pady=(8, 0))
+    def build_chat(self, auto, draft=""):
+        self.settings_button.configure(text=self.t("Settings", "설정"))
+        self.update_button.configure(text=self.t("Check for updates", "업데이트 확인"))
+        self.folder_label.configure(text=self.t("Project", "프로젝트") + " · " + str(self.folder))
+        language = "Korean" if self.lang == "한국어" else "English"
+        self.chat = ProjectChat(self.body, self.folder, self.coder, self.reviewers, language, CONFIG.parent, NAMES, auto)
+        self.chat.input.insert("1.0", draft)
 
     def save(self):
         CONFIG.parent.mkdir(parents=True, exist_ok=True)
-        CONFIG.write_text(json.dumps({"language": self.lang.get(), "folder": self.folder.get(),
-                                      "agents": [a for a in AGENTS if self.agents[a].get()]}, ensure_ascii=False), encoding="utf-8")
+        CONFIG.write_text(json.dumps({
+            "language": self.lang, "folder": str(self.folder), "coder": self.coder,
+            "reviewers": self.reviewers, "auto": self.chat.auto.get(),
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def rebuild(self):
-        self.save()
-        if self.busy or self.updating:
+    def settings(self):
+        t = self.t
+        if self.chat.busy:
+            messagebox.showinfo("Agent Council", t("Wait for the current turn to finish.", "현재 작업이 끝날 때까지 기다려 주세요."), parent=self.root)
             return
-        prompt = self.question.get("1.0", "end-1c")
-        output = self.output.get("1.0", "end-1c")
-        for child in self.body.winfo_children():
-            child.destroy()
-        self.build()
-        self.refresh_runs()
-        self.question.insert("1.0", prompt)
-        self.show(output)
+        dialog = tk.Toplevel(self.root)
+        dialog.title(t("Settings", "설정"))
+        dialog.transient(self.root)
+        dialog.grab_set()
+        panel = ttk.Frame(dialog, padding=16)
+        panel.pack(fill="both", expand=True)
+        folder = tk.StringVar(value=str(self.folder))
+        language = tk.StringVar(value=self.lang)
+        coder = tk.StringVar(value=NAMES[self.coder])
+        reviewers = {name: tk.BooleanVar(value=name in self.reviewers) for name in AGENTS}
+        ttk.Label(panel, text=t("Project folder", "프로젝트 폴더")).grid(row=0, column=0, sticky="w")
+        ttk.Entry(panel, textvariable=folder, width=52).grid(row=1, column=0, sticky="ew", pady=(3, 12))
 
-    def pick(self):
-        path = filedialog.askdirectory(initialdir=self.folder.get())
-        if path:
-            self.folder.set(path)
+        def browse():
+            path = filedialog.askdirectory(parent=dialog, initialdir=folder.get())
+            if path:
+                folder.set(path)
+
+        ttk.Button(panel, text=t("Browse", "찾아보기"), command=browse).grid(row=1, column=1, padx=(8, 0), sticky="n")
+        roles = ttk.Frame(panel)
+        roles.grid(row=2, columnspan=2, sticky="ew")
+        ttk.Label(roles, text=t("Coding agent", "코딩 담당 AI")).grid(row=0, column=0, sticky="w")
+        picker = ttk.Combobox(roles, textvariable=coder, state="readonly", values=[NAMES[n] for n in CODING_AGENTS])
+        picker.grid(row=1, column=0, sticky="w", padx=(0, 16), pady=3)
+        ttk.Label(roles, text=t("Language", "언어")).grid(row=0, column=1, sticky="w")
+        ttk.Combobox(roles, textvariable=language, state="readonly", values=("English", "한국어"), width=12).grid(row=1, column=1, sticky="w", pady=3)
+        ttk.Label(panel, text=t("Review agents (optional)", "검수 AI (선택 사항)")).grid(row=3, column=0, sticky="w", pady=(12, 3))
+        choices = ttk.Frame(panel)
+        choices.grid(row=4, columnspan=2, sticky="w")
+        checks = {}
+        for i, name in enumerate(AGENTS):
+            check = ttk.Checkbutton(choices, text=NAMES[name], variable=reviewers[name])
+            check.grid(row=i // 3, column=i % 3, sticky="w", padx=(0, 10))
+            checks[name] = check
+
+        def sync_reviewers(*_):
+            for name, check in checks.items():
+                is_coder = NAMES[name] == coder.get()
+                if is_coder:
+                    reviewers[name].set(False)
+                check.state(["disabled" if is_coder else "!disabled"])
+
+        picker.bind("<<ComboboxSelected>>", sync_reviewers)
+        sync_reviewers()
+
+        def apply():
+            path = Path(folder.get().strip()).expanduser()
+            if not folder.get().strip() or not path.is_dir():
+                messagebox.showerror("Agent Council", t("Choose an existing folder.", "기존 폴더를 선택하세요."), parent=dialog)
+                return
+            path = path.resolve()
+            selected_coder = next(name for name in CODING_AGENTS if NAMES[name] == coder.get())
+            selected_reviewers = [name for name in AGENTS if reviewers[name].get() and name != selected_coder]
+            auto = self.chat.auto.get()
+            draft = self.chat.input.get("1.0", "end-1c") if path == self.folder else ""
+            self.chat.close()
+            self.folder, self.coder, self.reviewers, self.lang = path, selected_coder, selected_reviewers, language.get()
+            self.build_chat(auto, draft)
             self.save()
-            self.refresh_runs()
+            dialog.destroy()
+            self.chat.input.focus_set()
 
-    def refresh_runs(self, selected=None):
-        if self.busy:
-            return
-        current = self.runs.get(self.run_picker.get())
-        self.runs = {}
-        if self.folder.get().strip():
-            directory = Path(self.folder.get()).expanduser().resolve() / "multi_ai_runs"
-            for path in sorted(directory.glob("*/final.md"), reverse=True):
-                try:
-                    meta = json.loads(path.with_name("meta.json").read_text(encoding="utf-8"))
-                    if meta["final_ok"] and isinstance(meta["labels"], dict):
-                        self.runs[f"{path.parent.name} · {meta['question'][:55]}"] = path.parent
-                except (OSError, ValueError, KeyError):
-                    continue
-        self.run_picker.configure(values=list(self.runs))
-        target = selected or current
-        key = next((key for key, path in self.runs.items() if path == target), next(iter(self.runs), ""))
-        self.run_picker.set(key)
-        self.load_run()
-
-    def load_run(self):
-        self.documents = {}
-        run = self.runs.get(self.run_picker.get())
-        self.implement_button.state(["!disabled" if run and not self.busy else "disabled"])
-        if run:
-            meta = json.loads((run / "meta.json").read_text(encoding="utf-8"))
-            authors = "\n".join(f"{label} · {NAMES.get(name, name)}" for name, label in meta["labels"].items())
-            title = self.t("Recommendation", "최종 추천")
-            self.documents[title] = f"{meta['question']}\n\n{authors}\n\n" + (run / "final.md").read_text(encoding="utf-8")
-            for filename, prefix in (("proposals.json", self.t("Proposal", "초안")), ("reviews.json", self.t("Review", "평가"))):
-                path = run / filename
-                if path.exists():
-                    for name, result in json.loads(path.read_text(encoding="utf-8")).items():
-                        label = meta["labels"].get(name, "—") if filename == "proposals.json" else ""
-                        self.documents[f"{prefix} {label} · {NAMES.get(name, name)}"] = result["text"] or result["error"]
-            if (run / "implementation.md").exists():
-                self.documents[self.t("Implementation · Codex", "구현 결과 · Codex")] = (run / "implementation.md").read_text(encoding="utf-8")
-        self.document_picker.configure(values=list(self.documents))
-        self.document_picker.set(next(iter(self.documents), ""))
-        self.show(self.documents.get(self.document_picker.get(), ""))
-
-    def show(self, value):
-        self.output.configure(state="normal")
-        self.output.delete("1.0", "end")
-        self.output.insert("1.0", value)
-        self.output.configure(state="disabled")
-
-    def run(self):
-        t = self.t
-        names = [name for name in AGENTS if self.agents[name].get()]
-        cwd = Path(self.folder.get()).expanduser()
-        question = self.question.get("1.0", "end-1c").strip()
-        approval = " ".join(question.lower().rstrip(".!").split())
-        if approval.replace(" ", "") in {"추천안으로진행하자", "추천안으로진행해줘", "추천안으로진행", "추천안으로시작하자", "추천안으로시작", "추천안으로시작해줘", "추천안으로진행해주세요"} or approval in {
-            "implement the recommendation", "proceed with the recommendation", "start with the recommendation",
-        }:
-            self.implement()
-            return
-        if not question or not self.folder.get().strip() or not cwd.is_dir() or len(names) < 2:
-            messagebox.showerror("Agent Council", t("Enter a question, select an existing folder and at least two agents.",
-                                                   "질문을 입력하고 기존 폴더와 에이전트 두 개 이상을 선택하세요."))
-            return
-        missing = [NAMES[name] for name in names if not shutil.which(name)]
-        if missing:
-            messagebox.showerror("Agent Council", t("CLI not found on PATH: ", "PATH에서 CLI를 찾을 수 없습니다: ") + ", ".join(missing))
-            return
-        language = self.response_language()
-        self.start_run(lambda emit: run_council(question, cwd.resolve(), names, names[0], language, emit))
-
-    def response_language(self):
-        return "Korean" if self.lang.get() == "한국어" else "English"
-
-    def open_chat(self):
-        if self.busy or self.updating:
-            return
-        if self.chat and self.chat.window.winfo_exists():
-            self.chat.window.lift()
-            return
-        folder = Path(self.folder.get()).expanduser()
-        if not self.folder.get().strip() or not folder.is_dir() or not self.agents["claude"].get() or not shutil.which("claude"):
-            messagebox.showerror("Agent Council", self.t("Select a project folder and connect Claude Code in Settings.",
-                                                        "프로젝트 폴더를 선택하고 설정에서 Claude Code를 연결하세요."))
-            return
-        self.save()
-        reviewers = [name for name in AGENTS if name != "claude" and self.agents[name].get()]
-        self.chat = ProjectChat(self.root, folder.resolve(), reviewers, self.response_language(), CONFIG.parent, NAMES)
-        self.chat.window.transient(self.root)
-        self.chat.window.grab_set()
-
-    def implement(self):
-        t = self.t
-        self.refresh_runs()
-        run = self.runs.get(self.run_picker.get())
-        if not run or not self.agents["codex"].get() or not shutil.which("codex"):
-            messagebox.showerror("Agent Council", t("Select a saved recommendation and connect Codex in Settings.",
-                                                   "저장된 추천안을 선택하고 설정에서 Codex를 연결하세요."))
-            return
-        cwd = run.parent.parent.resolve()
-        followup = self.question.get("1.0", "end-1c").strip()
-        language = self.response_language()
-        if messagebox.askyesno("Agent Council", t(f"Let Codex implement this recommendation in {cwd}?",
-                                                 f"Codex가 {cwd} 폴더에 이 추천안을 구현하도록 할까요?")):
-            self.start_run(lambda emit: implement_recommendation(run, cwd, language, followup, emit))
-
-    def start_run(self, operation):
-        self.save()
-        self.busy = True
-        self.run_button.state(["disabled"])
-        self.implement_button.state(["disabled"])
-        self.run_picker.configure(state="disabled")
-        self.bar.start(15)
-        self.show("")
-        self.question.delete("1.0", "end")
-
-        def worker():
-            try:
-                result = operation(lambda *event: self.events.put(("progress", event)))
-                self.events.put(("done", result))
-            except Exception as exc:
-                self.events.put(("done", (None, "", str(exc))))
-
-        threading.Thread(target=worker, daemon=True).start()
+        ttk.Button(panel, text=t("Save settings", "설정 저장"), command=apply).grid(row=5, columnspan=2, sticky="e", pady=(16, 0))
 
     def update(self):
         self.updating = True
@@ -308,10 +192,7 @@ class App:
         threading.Thread(target=worker, daemon=True).start()
 
     def close(self):
-        if self.chat and self.chat.window.winfo_exists():
-            self.chat.close()
-            return
-        if self.busy or self.updating:
+        if self.chat.busy or self.updating:
             messagebox.showinfo("Agent Council", self.t("Wait for the current operation to finish.", "현재 작업이 끝날 때까지 기다려 주세요."))
             return
         self.save()
@@ -321,40 +202,7 @@ class App:
         t = self.t
         while not self.events.empty():
             kind, value = self.events.get()
-            if kind == "progress":
-                phase, name, data = value
-                if phase == 0:
-                    continue
-                if not name:
-                    self.active.clear()
-                    self.table.delete(*self.table.get_children())
-                    labels = (t("Proposals", "초안"), t("Cross-review", "상호 평가"), t("Recommendation", "최종 추천"))
-                    self.status.configure(text=f"{phase}/3  {labels[phase - 1]}" if phase < 4 else t("Implementing with Codex", "Codex가 구현 중"))
-                    for agent in data:
-                        self.active[agent] = time.monotonic()
-                        self.table.insert("", "end", iid=agent, values=(NAMES[agent], t("Waiting for CLI response", "CLI 응답 대기 중"), "0s"))
-                else:
-                    elapsed = int(time.monotonic() - self.active.pop(name))
-                    error = data["error"].strip().splitlines()
-                    detail = t("Done", "완료") if data["ok"] else t("Failed", "실패") + (f" · {error[0][:150]}" if error else "")
-                    self.table.item(name, values=(NAMES[name], detail, f"{elapsed}s"),
-                                    tags=("success" if data["ok"] else "failure",))
-            elif kind == "done":
-                self.busy = False
-                self.bar.stop()
-                self.run_button.state(["!disabled"])
-                path, answer, error = value
-                self.run_picker.configure(state="readonly")
-                self.refresh_runs(path)
-                self.status.configure(text=t("Finished", "완료") if not error else t("Run failed", "실행 실패"))
-                if error:
-                    self.show((f"{path}\n\n" if path else "") + error)
-                elif answer != "" and path and (path / "implementation.md").exists():
-                    title = t("Implementation · Codex", "구현 결과 · Codex")
-                    if title in self.documents:
-                        self.document_picker.set(title)
-                        self.show(self.documents[title])
-            elif kind == "available" and value:
+            if kind == "available" and value:
                 version, asset = value
                 if messagebox.askyesno("Agent Council", t(f"Download {version}?", f"{version} 업데이트를 다운로드할까요?")):
                     self.background("downloaded", lambda: download_update(asset))
@@ -369,8 +217,6 @@ class App:
                                             "다운로드가 완료됐습니다. 앱을 닫고 Launch Agent Council.cmd로 다시 실행하면 적용됩니다."),
                             "update_error": value}
                 messagebox.showinfo("Agent Council", messages[kind])
-        for name, start in self.active.items():
-            self.table.set(name, "elapsed", f"{int(time.monotonic() - start)}s")
         self.root.after(200, self.poll)
 
 

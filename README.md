@@ -1,27 +1,21 @@
 # Agent Council
 
-A Windows desktop app that asks locally installed AI CLIs for independent proposals, runs a cross-review, and combines the results into a recommendation.
+A Windows desktop chat for one coding agent and optional reviewers.
 
 ## Install
 
 1. Download `AgentCouncil-Windows-x64.zip` from [Releases](https://github.com/jwjp/agent-council/releases/latest).
 2. Extract both files to a writable folder and open `Launch Agent Council.cmd`. Python is bundled.
-3. Install and sign in to at least two supported CLIs, and make sure they are on Windows PATH. Select those agents in Settings. Clearing a checkbox disconnects the agent from the app while keeping its CLI login available for other uses.
-4. Select a project folder, enter your request, and click **Run council**. English is the default. Choose **한국어** to switch the interface and model responses.
+3. In **Settings**, choose an existing project folder and a coding agent (Claude Code or Codex). Install and sign in to the chosen CLI and make sure it is on Windows PATH. Review agents are optional. The coding agent cannot also review its own work.
+4. Enter a request in the main chat. Choose **한국어** in Settings to switch the interface and model responses from English.
 
-The selected folder is the working directory for all CLI calls. The workflow asks for proposals and reviews in text. It saves run artifacts under `multi_ai_runs` in that folder. The progress bar and timers show how long the app has been waiting for each CLI. Each call has a five-minute timeout. The workflow may use multiple calls per CLI and sends proposal excerpts to other selected providers for review.
+## Chat and execution
 
-Use the two result selectors to choose a saved run and view its recommendation, proposals by author, or reviews by reviewer. To act on the selected recommendation, click **Implement recommendation** or enter **Proceed with the recommendation** and click **Run council**. Confirm the project folder when prompted. Codex must be connected and signed in. It receives the original request, full candidates, and the recommendation, then can edit and test files in the selected workspace. You can add implementation instructions in the prompt box before clicking **Implement recommendation**.
+- **Run automatically** is on by default. The coding agent proceeds on clear requests and asks a question when it needs a consequential decision. Turn it off to request a plan and use **Approve and run** when ready.
+- If reviewers are selected, they inspect the implementation in parallel. The coding agent verifies concrete findings and makes one revision pass. The chat shows the author of each response.
+- **Full execution access** starts off and must be explicitly enabled. It bypasses the selected coding CLI's permission checks using the existing Windows account permissions. With it off, sandbox or permission settings can block some commands.
 
-## Project Chat
-
-Select a folder, enable Claude Code and any reviewers (including Gemini CLI), and open **Project chat**. The app keeps one local transcript per folder under `%LOCALAPPDATA%\AgentCouncil\chats`. The ten most recent messages, with excerpts for long messages, carry into each new request.
-
-- By default, Claude Code answers questions or proposes a plan. Click **Approve and run** to execute a proposed change.
-- **Run automatically** starts execution when you send a message. Selected reviewers inspect the implementation in parallel. Claude Code makes one revision pass when a reviewer reports an actionable issue.
-- **Full execution access** lets Claude Code bypass its CLI permission prompts for this chat window. It starts off each time you open the chat and uses your existing Windows account permissions. The default editing mode can block shell commands such as package installation.
-
-The transcript includes implementation reports and reviewer responses. Review prompts share the task, Claude Code's report, and bounded Git diff and status excerpts with the selected reviewers.
+The app keeps one local transcript per folder under `%LOCALAPPDATA%\AgentCouncil\chats`, including transcripts from 1.2.0. The ten most recent messages, with excerpts for long messages, carry into each new request. Review prompts share the task, implementation report, and bounded Git diff and status excerpts with the selected reviewers. Prior council reports remain in their project folders under `multi_ai_runs`.
 
 ## Updates
 

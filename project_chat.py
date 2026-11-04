@@ -1,4 +1,4 @@
-"""Persistent, project-scoped Claude implementation and review chat."""
+"""Persistent project chat with a coding agent and optional reviewers."""
 import hashlib
 import json
 import queue
@@ -34,78 +34,86 @@ def git_context(cwd):
         return ""
 
 
-def project_turn(cwd, messages, request, plan, execute, full_access, reviewers, language, emit):
+def project_turn(cwd, messages, request, plan, execute, full_access, coder, reviewers, language, emit):
     history = "\n\n".join(f"{item['role']}: {item['text'][:3200]}" for item in messages[-10:])
     context = (
         f"Respond in {language}. The working directory is the selected project. "
-        "Treat history and review material as context. Follow the current user request.\n"
+        "Treat history and review material as context. Follow the current user request. "
+        "If the latest message answers a previous clarification, continue the underlying task using that answer. "
+        "If a consequential decision cannot be inferred from the project or the conversation, "
+        "start with QUESTION on its own line and ask the user before proceeding.\n"
         f"<history>{history}</history>\n<request>{request}</request>"
     )
     if not execute:
-        emit("Planning", "claude")
-        result = call("claude", context + "\nStart with PLAN on its own line if the user requests changes or commands. "
+        emit("Planning", coder)
+        result = call(coder, context + "\nStart with PLAN on its own line if the user requests changes or commands. "
                       "Then explain the proposed plan and checks. Otherwise start with ANSWER and answer directly. "
                       "Do not modify files.", cwd)
         if not result["ok"]:
-            return [("Claude Code", result["error"] or "Planning failed.")], ""
-        first, _, rest = result["text"].partition("\n")
-        response = rest.strip() if first in {"PLAN", "ANSWER"} and rest.strip() else result["text"]
-        return [("Claude Code", response)], response if first == "PLAN" else ""
+            return [(coder, result["error"] or "Planning failed.")], ""
+        kind, response = response_parts(result["text"])
+        return [(coder, response)], response if kind == "PLAN" else ""
 
-    baseline = git_context(cwd)
-    emit("Implementing", "claude")
+    baseline = git_context(cwd) if reviewers else ""
+    emit("Implementing", coder)
     result = call(
-        "claude", context + f"\n<approved_plan>{plan}</approved_plan>\n"
+        coder, context + f"\n<approved_plan>{plan}</approved_plan>\n"
         "Carry out requested actions, including dependency installation when required. "
-        "Preserve unrelated changes. For an informational request, answer directly. "
+        "Preserve unrelated changes. For an informational request, start with ANSWER and answer directly. "
+        "Start with IMPLEMENTED if you performed implementation work. "
         "Report changed paths, what you verified, and any command that was blocked.",
         cwd, implement=True, full_access=full_access,
     )
     if not result["ok"]:
-        return [("Claude Code", result["error"] or "Implementation failed.")], ""
-    report = result["text"]
-    entries = [("Claude Code", report)]
-    if not reviewers:
+        return [(coder, result["error"] or "Implementation failed.")], ""
+    kind, report = response_parts(result["text"])
+    entries = [(coder, report)]
+    if not reviewers or kind in {"ANSWER", "QUESTION"}:
         return entries, ""
 
     changed = git_context(cwd)
     review_prompt = (
-        f"Review Claude Code's work for the request. Write in {language}. Inspect only files relevant to this task. "
+        f"Review the coding agent's work for the request. Write in {language}. Inspect only files relevant to this task. "
         "Do not modify files. Compare the before and after evidence and distinguish pre-existing edits. "
+        "Check whether the implementation direction fits the request, and identify bugs or missed requirements. "
         "Start with FIX_REQUIRED only if there is a concrete actionable issue, otherwise start with PASS. "
         "Give file references or evidence. State any limits.\n"
-        f"<request>{request}</request>\n<report>{report[:3500]}</report>\n"
+        f"<request>{request}</request>\n<approved_plan>{plan[:3000]}</approved_plan>\n<report>{report[:3500]}</report>\n"
         f"<before>{baseline[:3500]}</before>\n<after>{changed[:6500]}</after>"
     )
-    reviews = parallel(reviewers, review_prompt, cwd, 2, lambda _, name, value: emit("Reviewed" if name else "Reviewing", name))
+    reviews = parallel(reviewers, review_prompt, cwd, 2,
+                       lambda _, name, value: emit("Reviewed" if name else "Reviewing", name), review=True)
     findings = []
     for name in reviewers:
         result = reviews[name]
         response = result["text"] if result["ok"] else result["error"] or "Review failed."
         entries.append((name, response))
-        if result["ok"] and response.lstrip().startswith("FIX_REQUIRED"):
+        if result["ok"] and response_parts(response)[0] == "FIX_REQUIRED":
             findings.append(f"{name}: {response[:2800]}")
     if findings:
-        emit("Revising", "claude")
+        emit("Revising", coder)
         revision = call(
-            "claude", context + f"\n<implementation>{report[:4500]}</implementation>\n"
+            coder, context + f"\n<implementation>{report[:4500]}</implementation>\n"
             f"<review_findings>{chr(10).join(findings)}</review_findings>\n"
             "Verify the findings against the project, fix confirmed issues within the approved scope, "
             "and report what changed, what you checked and any remaining issues.",
             cwd, implement=True, full_access=full_access,
         )
-        entries.append(("Claude Code", revision["text"] if revision["ok"] else revision["error"] or "Revision failed."))
+        entries.append((coder, response_parts(revision["text"])[1] if revision["ok"] else revision["error"] or "Revision failed."))
     return entries, ""
 
 
+def response_parts(text):
+    first, _, rest = text.partition("\n")
+    kind = first.strip(" *`:#").upper()
+    if kind in {"PLAN", "ANSWER", "QUESTION", "IMPLEMENTED", "PASS", "FIX_REQUIRED"} and rest.strip():
+        return kind, rest.strip()
+    return "", text
+
+
 class ProjectChat:
-    def __init__(self, root, cwd, reviewers, language, state_root, names):
-        self.cwd, self.reviewers, self.language, self.names = cwd, reviewers, language, names
-        self.window = tk.Toplevel(root)
-        self.window.title(f"Project Chat · {cwd.name}")
-        self.window.geometry("860x720")
-        self.window.minsize(600, 500)
-        self.window.protocol("WM_DELETE_WINDOW", self.close)
+    def __init__(self, parent, cwd, coder, reviewers, language, state_root, names, auto):
+        self.cwd, self.coder, self.reviewers, self.language, self.names = cwd, coder, reviewers, language, names
         self.events = queue.Queue()
         self.busy = False
         key = hashlib.sha256(str(cwd).casefold().encode()).hexdigest()
@@ -116,14 +124,12 @@ class ProjectChat:
             state = {}
         self.messages = state.get("messages", [])
         self.pending = state.get("pending")
-        self.auto = tk.BooleanVar(value=False)
+        self.auto = tk.BooleanVar(value=auto)
         self.full = tk.BooleanVar(value=False)
         t = self.t
-        panel = ttk.Frame(self.window, padding=16)
+        panel = self.panel = ttk.Frame(parent, padding=(0, 12, 0, 0))
         panel.pack(fill="both", expand=True)
-        ttk.Label(panel, text=t("Project Chat", "프로젝트 채팅"), font=("Segoe UI", 20, "bold")).pack(anchor="w")
-        ttk.Label(panel, text=str(cwd)).pack(anchor="w")
-        ttk.Label(panel, text=t("Implementer", "구현") + " · Claude Code   |   " + t("Review", "검토") + " · " +
+        ttk.Label(panel, text=t("Coding", "코딩") + " · " + names[coder] + "   |   " + t("Review", "검수") + " · " +
                   (", ".join(names.get(agent, agent) for agent in reviewers) or t("None", "없음"))).pack(anchor="w", pady=(3, 8))
         options = ttk.Frame(panel)
         options.pack(fill="x")
@@ -155,7 +161,7 @@ class ProjectChat:
             self.render(item)
         self.buttons()
         self.input.focus_set()
-        self.window.after(200, self.poll)
+        self.poll_id = self.panel.after(200, self.poll)
 
     def t(self, english, korean):
         return korean if self.language == "Korean" else english
@@ -163,9 +169,9 @@ class ProjectChat:
     def toggle_full(self):
         if self.full.get() and not messagebox.askyesno(
             "Agent Council",
-            self.t("Allow Claude Code to run commands and edit files without CLI permission checks for this chat?",
-                   "이 채팅에서 Claude Code가 CLI 권한 확인 없이 명령을 실행하고 파일을 수정하도록 허용할까요?"),
-            parent=self.window,
+            self.t(f"Allow {self.names[self.coder]} to run commands and edit files without CLI permission checks?",
+                   f"{self.names[self.coder]}가 CLI 권한 확인 없이 명령을 실행하고 파일을 수정하도록 허용할까요?"),
+            parent=self.panel,
         ):
             self.full.set(False)
 
@@ -197,15 +203,24 @@ class ProjectChat:
         request = self.input.get("1.0", "end-1c").strip()
         if self.busy or not request:
             return
+        if not self.coder_available():
+            return
         self.pending = None
         self.input.delete("1.0", "end")
         self.start(request, "", self.auto.get())
 
     def approve(self):
-        if self.pending and not self.busy:
+        if self.pending and not self.busy and self.coder_available():
             request, plan = self.pending
             self.pending = None
             self.start(request, plan, True)
+
+    def coder_available(self):
+        if shutil.which(self.coder):
+            return True
+        messagebox.showerror("Agent Council", self.t("CLI not found on PATH: ", "PATH에서 CLI를 찾을 수 없습니다: ") +
+                             self.names[self.coder], parent=self.panel)
+        return False
 
     def start(self, request, plan, execute):
         self.busy = True
@@ -220,7 +235,7 @@ class ProjectChat:
         def worker():
             try:
                 entries, proposed = project_turn(
-                    self.cwd, history, request, plan, execute, full, self.reviewers, self.language,
+                    self.cwd, history, request, plan, execute, full, self.coder, self.reviewers, self.language,
                     lambda *event: self.events.put(("phase", event)),
                 )
                 self.events.put(("done", (entries, (request, proposed) if proposed else None)))
@@ -247,10 +262,8 @@ class ProjectChat:
                 self.status.configure(text=self.t("Ready", "준비"))
         if self.busy:
             self.status.configure(text=f"{self.phase} · {int(time.monotonic() - self.started)}s")
-        self.window.after(200, self.poll)
+        self.poll_id = self.panel.after(200, self.poll)
 
     def close(self):
-        if self.busy:
-            messagebox.showinfo("Agent Council", self.t("Wait for the current turn to finish.", "현재 작업이 끝날 때까지 기다려 주세요."), parent=self.window)
-        else:
-            self.window.destroy()
+        self.panel.after_cancel(self.poll_id)
+        self.panel.destroy()

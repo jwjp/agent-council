@@ -12,21 +12,26 @@ import tempfile
 
 
 AGENTS = ("codex", "claude", "agy", "grok", "agent", "gemini")
+CODING_AGENTS = ("claude", "codex")
 TIMEOUT_SECONDS = 300
 MAX_TEXT = 2400
 
 
-def command(name: str, prompt: str, *, implement=False, full_access=False) -> list[str]:
+def command(name: str, prompt: str, *, implement=False, full_access=False, review=False) -> list[str]:
     executable = shutil.which(name)
     if not executable:
         raise RuntimeError(f"CLI not found: {name}")
     if name == "codex":
+        if implement and full_access:
+            return [executable, "exec", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check", "-"]
         return [executable, "exec", "--sandbox", "workspace-write" if implement else "read-only", "--skip-git-repo-check", "-"]
     if name == "claude":
         if implement:
             return [executable, "--print", *(
                 ["--dangerously-skip-permissions"] if full_access else ["--permission-mode", "acceptEdits"]
             )]
+        if review:
+            return [executable, "--print", "--permission-mode", "plan", "--tools=Read,Glob,Grep"]
         return [executable, "--print", "--tools="]
     if name == "agy":
         return [executable, "--mode", "plan", "--print", prompt]
@@ -45,11 +50,11 @@ def command(name: str, prompt: str, *, implement=False, full_access=False) -> li
     return [*launcher, "--print", "--mode", "ask", "--sandbox", "enabled", "--", prompt]
 
 
-def call(name: str, prompt: str, cwd: Path, *, implement=False, full_access=False) -> dict:
+def call(name: str, prompt: str, cwd: Path, *, implement=False, full_access=False, review=False) -> dict:
     try:
         uses_stdin = name in ("codex", "claude", "gemini")
         result = subprocess.run(
-            command(name, prompt, implement=implement, full_access=full_access), cwd=cwd,
+            command(name, prompt, implement=implement, full_access=full_access, review=review), cwd=cwd,
             input=prompt if uses_stdin else None,
             stdin=None if uses_stdin else subprocess.DEVNULL,
             capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -68,10 +73,10 @@ def call(name: str, prompt: str, cwd: Path, *, implement=False, full_access=Fals
         return {"ok": False, "text": "", "error": str(exc), "exit_code": None}
 
 
-def parallel(names, prompt, cwd, phase, emit):
+def parallel(names, prompt, cwd, phase, emit, *, review=False):
     emit(phase, "", names)
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(names)) as pool:
-        jobs = {pool.submit(call, name, prompt, cwd): name for name in names}
+        jobs = {pool.submit(call, name, prompt, cwd, review=review): name for name in names}
         results = {}
         for job in concurrent.futures.as_completed(jobs):
             name = jobs[job]
