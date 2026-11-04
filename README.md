@@ -1,21 +1,27 @@
 # Agent Council
 
-A Windows desktop chat for one coding agent and optional reviewers.
+A Windows desktop chat for a coding agent, review agents, or both.
 
 ## Install
 
 1. Download `AgentCouncil-Windows-x64.zip` from [Releases](https://github.com/jwjp/agent-council/releases/latest).
 2. Extract both files to a writable folder and open `Launch Agent Council.cmd`. Python is bundled.
-3. In **Settings**, choose an existing project folder and a coding agent (Claude Code or Codex). Install and sign in to the chosen CLI and make sure it is on Windows PATH. Review agents are optional. The coding agent cannot also review its own work.
-4. Enter a request in the main chat. Choose **한국어** in Settings to switch the interface and model responses from English.
+3. In **Settings**, choose a project folder and the agents you want. Install and sign in to their CLIs and make sure they are on Windows PATH.
+4. Type in the main chat. Enter sends. Shift+Enter inserts a new line. Choose **한국어** in Settings to switch the interface and model responses from English.
 
-## Chat and execution
+## Roles and permissions
 
-- **Run automatically** is on by default. The coding agent proceeds on clear requests and asks a question when it needs a consequential decision. Turn it off to request a plan and use **Approve and run** when ready.
-- If reviewers are selected, they inspect the implementation in parallel. The coding agent verifies concrete findings and makes one revision pass. The chat shows the author of each response.
-- **Full execution access** starts off and must be explicitly enabled. It bypasses the selected coding CLI's permission checks using the existing Windows account permissions. With it off, sandbox or permission settings can block some commands.
+- Choose Claude Code or Codex as the coding agent. It acts on clear work requests and asks for clarification when it needs a decision.
+- Choose **None (review only)** as the coding agent to send requests directly to your selected reviewers for findings and opinions. Reviewers use their review, plan, or read-only CLI modes.
+- If you select both roles, reviewers inspect the coding agent's work in parallel. The coding agent verifies concrete findings and makes one revision pass.
+- **Full execution access** applies only to the coding agent. It starts off and requires confirmation to enable for the selected project and agent. It bypasses CLI permission checks using the existing Windows account permissions.
+- Add optional **Reference folders** in Settings. Agents receive the paths and are instructed to consult them without editing them. This instruction does not enforce filesystem isolation. Access also depends on CLI permissions.
 
-The app keeps one local transcript per folder under `%LOCALAPPDATA%\AgentCouncil\chats`, including transcripts from 1.2.0. The ten most recent messages, with excerpts for long messages, carry into each new request. Review prompts share the task, implementation report, and bounded Git diff and status excerpts with the selected reviewers. Prior council reports remain in their project folders under `multi_ai_runs`.
+## Progress and history
+
+The activity panel shows the active phase, elapsed time, and when CLI output was last received. A CLI can stay silent while it waits for its provider. Token counters show session input and output totals when the CLI reports them. Remaining account quota is unavailable in the supported streams and appears as a dash.
+
+The app keeps one local transcript per folder under `%LOCALAPPDATA%\AgentCouncil\chats`. The ten most recent messages, with excerpts for long messages, carry into each new request. Review prompts may include implementation reports and bounded Git diff and status excerpts. Prior council reports remain in project folders under `multi_ai_runs`.
 
 ## Updates
 

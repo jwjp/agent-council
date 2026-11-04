@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 
 
 AGENTS = ("codex", "claude", "agy", "grok", "agent", "gemini")
@@ -50,11 +51,14 @@ def command(name: str, prompt: str, *, implement=False, full_access=False, revie
     return [*launcher, "--print", "--mode", "ask", "--sandbox", "enabled", "--", prompt]
 
 
-def call(name: str, prompt: str, cwd: Path, *, implement=False, full_access=False, review=False) -> dict:
+def call(name: str, prompt: str, cwd: Path, *, implement=False, full_access=False, review=False, activity=None) -> dict:
     try:
         uses_stdin = name in ("codex", "claude", "gemini")
+        args = command(name, prompt, implement=implement, full_access=full_access, review=review)
+        if activity is not None:
+            return stream_call(name, args, prompt if uses_stdin else None, cwd, activity)
         result = subprocess.run(
-            command(name, prompt, implement=implement, full_access=full_access, review=review), cwd=cwd,
+            args, cwd=cwd,
             input=prompt if uses_stdin else None,
             stdin=None if uses_stdin else subprocess.DEVNULL,
             capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -73,10 +77,120 @@ def call(name: str, prompt: str, cwd: Path, *, implement=False, full_access=Fals
         return {"ok": False, "text": "", "error": str(exc), "exit_code": None}
 
 
-def parallel(names, prompt, cwd, phase, emit, *, review=False):
+def stream_call(name, args, prompt, cwd, activity):
+    if name == "codex":
+        args.insert(-1, "--json")
+    elif name == "claude":
+        args.extend(("--verbose", "--output-format", "stream-json"))
+    elif name in ("agy", "grok", "gemini"):
+        output_format = "streaming-json" if name == "grok" else "stream-json"
+        args[1:1] = ["--output-format", output_format]
+    answer, errors = [], []
+    usage = {}
+    failed = False
+
+    def read_stdout(pipe):
+        nonlocal failed
+        for line in pipe:
+            if name == "agent":
+                answer.append(line)
+                activity(name, "output", None)
+                continue
+            try:
+                event = json.loads(line)
+            except ValueError:
+                errors.append(line)
+                continue
+            if not isinstance(event, dict):
+                continue
+            kind = event.get("type") or event.get("event")
+            item = event.get("item") or {}
+            detail = item.get("type", kind)
+            if kind == "assistant":
+                if any(block.get("type") == "tool_use" for block in event.get("message", {}).get("content", [])):
+                    detail = "tool_use"
+            activity(name, "output", detail)
+            reported = {}
+            if name == "codex" and kind == "item.completed" and item.get("type") == "agent_message":
+                answer[:] = [item.get("text", "")]
+            elif name == "claude" and kind == "result":
+                answer[:] = [event.get("result", "")]
+                failed = event.get("is_error", False)
+                reported = dict(event.get("usage") or {})
+                if "input_tokens" in reported:
+                    reported["input_tokens"] += sum(reported.get(key, 0) for key in ("cache_read_input_tokens", "cache_creation_input_tokens"))
+            elif name == "agy" and kind == "result":
+                result = event.get("result") or {}
+                answer[:] = [result.get("response") or ""]
+                failed = result.get("status") != "SUCCESS"
+                reported = result.get("usage") or {}
+                if result.get("error"):
+                    errors.append(str(result["error"]))
+            elif name == "grok" and kind == "text":
+                data = event.get("data")
+                if isinstance(data, str):
+                    answer.append(data)
+                elif isinstance(data, dict):
+                    answer.append(data.get("text") or "")
+            elif name == "gemini" and kind == "message" and event.get("role") == "assistant":
+                if not event.get("delta"):
+                    answer.clear()
+                answer.append(event.get("content") or "")
+            elif name == "gemini" and kind == "result":
+                failed = event.get("status") != "success"
+                reported = event.get("stats") or {}
+                if event.get("error"):
+                    errors.append(str(event["error"]))
+            elif kind in ("turn.completed", "end"):
+                reported = event.get("usage") or {}
+            if reported:
+                usage.update({key: reported[key] for key in ("input_tokens", "output_tokens") if isinstance(reported.get(key), int)})
+                if usage:
+                    activity(name, "usage", dict(usage))
+            if kind == "turn.failed":
+                failed = True
+                errors.append(event.get("error", {}).get("message", "Turn failed."))
+
+    def read_stderr(pipe):
+        for line in pipe:
+            errors.append(line)
+            activity(name, "output", None)
+
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    with tempfile.TemporaryFile() as source:
+        if prompt is not None:
+            source.write(prompt.encode("utf-8"))
+            source.seek(0)
+        with subprocess.Popen(
+            args, cwd=cwd, stdin=source if prompt is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+            errors="replace", creationflags=flags,
+        ) as process:
+            readers = [threading.Thread(target=reader, args=(pipe,), daemon=True)
+                       for reader, pipe in ((read_stdout, process.stdout), (read_stderr, process.stderr))]
+            for reader in readers:
+                reader.start()
+            try:
+                process.wait(timeout=TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                if sys.platform == "win32":
+                    subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                   capture_output=True, creationflags=flags, timeout=10, check=False)
+                if process.poll() is None:
+                    process.kill()
+                raise
+            for reader in readers:
+                reader.join()
+    result = "".join(answer).strip()
+    return {"ok": process.returncode == 0 and not failed and bool(result), "text": result,
+            "error": ("".join(errors).strip() or (result if failed else ""))[-3000:],
+            "exit_code": process.returncode}
+
+
+def parallel(names, prompt, cwd, phase, emit, *, review=False, activity=None):
     emit(phase, "", names)
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(names)) as pool:
-        jobs = {pool.submit(call, name, prompt, cwd, review=review): name for name in names}
+        jobs = {pool.submit(call, name, prompt, cwd, review=review, activity=activity): name for name in names}
         results = {}
         for job in concurrent.futures.as_completed(jobs):
             name = jobs[job]

@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 from multi_ai import AGENTS, CODING_AGENTS
 from project_chat import ProjectChat
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 REPO = "jwjp/agent-council"
 ASSET = "AgentCouncil.exe"
 CONFIG = Path(os.getenv("LOCALAPPDATA", Path.home())) / "AgentCouncil" / "settings.json"
@@ -70,8 +70,10 @@ class App:
         self.folder = (folder if folder.is_dir() else Path.home()).resolve()
         self.coder = config.get("coder", "claude")
         if self.coder not in CODING_AGENTS:
-            self.coder = CODING_AGENTS[0]
+            self.coder = None
         self.reviewers = [name for name in AGENTS if name in config.get("reviewers", []) and name != self.coder]
+        self.references = [Path(path) for path in config.get("references", [])]
+        self.full = bool(config.get("full_access") and self.coder and self.folder == folder.resolve())
         root.title(f"Agent Council {VERSION}")
         root.geometry("900x720")
         root.minsize(640, 500)
@@ -87,26 +89,28 @@ class App:
         self.folder_label = ttk.Label(self.body)
         self.folder_label.pack(anchor="w", pady=(4, 0))
         self.chat = None
-        self.build_chat(config.get("auto", True))
+        self.build_chat()
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.after(200, self.poll)
 
     def t(self, english, korean):
         return korean if self.lang == "한국어" else english
 
-    def build_chat(self, auto, draft=""):
+    def build_chat(self, draft=""):
         self.settings_button.configure(text=self.t("Settings", "설정"))
         self.update_button.configure(text=self.t("Check for updates", "업데이트 확인"))
-        self.folder_label.configure(text=self.t("Project", "프로젝트") + " · " + str(self.folder))
+        refs = self.t(f"{len(self.references)} reference folders", f"참고 폴더 {len(self.references)}개")
+        self.folder_label.configure(text=f"{self.t('Project', '프로젝트')} · {self.folder}   |   {refs}")
         language = "Korean" if self.lang == "한국어" else "English"
-        self.chat = ProjectChat(self.body, self.folder, self.coder, self.reviewers, language, CONFIG.parent, NAMES, auto)
+        self.chat = ProjectChat(self.body, self.folder, self.coder, self.reviewers, self.references,
+                                language, CONFIG.parent, NAMES, self.full)
         self.chat.input.insert("1.0", draft)
 
     def save(self):
         CONFIG.parent.mkdir(parents=True, exist_ok=True)
         CONFIG.write_text(json.dumps({
             "language": self.lang, "folder": str(self.folder), "coder": self.coder,
-            "reviewers": self.reviewers, "auto": self.chat.auto.get(),
+            "reviewers": self.reviewers, "full_access": self.full, "references": list(map(str, self.references)),
         }, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def settings(self):
@@ -122,7 +126,10 @@ class App:
         panel.pack(fill="both", expand=True)
         folder = tk.StringVar(value=str(self.folder))
         language = tk.StringVar(value=self.lang)
-        coder = tk.StringVar(value=NAMES[self.coder])
+        no_coder = t("None (review only)", "없음 (검수 전용)")
+        coder = tk.StringVar(value=NAMES.get(self.coder, no_coder))
+        full = tk.BooleanVar(value=self.full)
+        references = list(self.references)
         reviewers = {name: tk.BooleanVar(value=name in self.reviewers) for name in AGENTS}
         ttk.Label(panel, text=t("Project folder", "프로젝트 폴더")).grid(row=0, column=0, sticky="w")
         ttk.Entry(panel, textvariable=folder, width=52).grid(row=1, column=0, sticky="ew", pady=(3, 12))
@@ -135,8 +142,8 @@ class App:
         ttk.Button(panel, text=t("Browse", "찾아보기"), command=browse).grid(row=1, column=1, padx=(8, 0), sticky="n")
         roles = ttk.Frame(panel)
         roles.grid(row=2, columnspan=2, sticky="ew")
-        ttk.Label(roles, text=t("Coding agent", "코딩 담당 AI")).grid(row=0, column=0, sticky="w")
-        picker = ttk.Combobox(roles, textvariable=coder, state="readonly", values=[NAMES[n] for n in CODING_AGENTS])
+        ttk.Label(roles, text=t("Coding agent (optional)", "코딩 담당 AI (선택 사항)")).grid(row=0, column=0, sticky="w")
+        picker = ttk.Combobox(roles, textvariable=coder, state="readonly", values=[no_coder, *[NAMES[n] for n in CODING_AGENTS]])
         picker.grid(row=1, column=0, sticky="w", padx=(0, 16), pady=3)
         ttk.Label(roles, text=t("Language", "언어")).grid(row=0, column=1, sticky="w")
         ttk.Combobox(roles, textvariable=language, state="readonly", values=("English", "한국어"), width=12).grid(row=1, column=1, sticky="w", pady=3)
@@ -148,6 +155,9 @@ class App:
             check = ttk.Checkbutton(choices, text=NAMES[name], variable=reviewers[name])
             check.grid(row=i // 3, column=i % 3, sticky="w", padx=(0, 10))
             checks[name] = check
+        full_check = ttk.Checkbutton(panel, text=t("Full execution access for the coding agent", "코딩 담당 AI에 전체 실행 권한 부여"),
+                                     variable=full)
+        full_check.grid(row=5, columnspan=2, sticky="w", pady=(10, 0))
 
         def sync_reviewers(*_):
             for name, check in checks.items():
@@ -155,9 +165,36 @@ class App:
                 if is_coder:
                     reviewers[name].set(False)
                 check.state(["disabled" if is_coder else "!disabled"])
+            full_check.state(["disabled" if coder.get() == no_coder else "!disabled"])
+            if coder.get() == no_coder:
+                full.set(False)
 
         picker.bind("<<ComboboxSelected>>", sync_reviewers)
         sync_reviewers()
+
+        ttk.Label(panel, text=t("Reference folders", "참고 폴더")).grid(row=6, columnspan=2, sticky="w", pady=(12, 3))
+        folder_list = tk.Listbox(panel, height=4, selectmode="extended")
+        folder_list.grid(row=7, column=0, sticky="ew")
+        for reference in references:
+            folder_list.insert("end", str(reference))
+        reference_buttons = ttk.Frame(panel)
+        reference_buttons.grid(row=7, column=1, padx=(8, 0), sticky="n")
+
+        def add_reference():
+            path = filedialog.askdirectory(parent=dialog, initialdir=folder.get())
+            if path:
+                reference = Path(path).resolve()
+                if reference not in references:
+                    references.append(reference)
+                    folder_list.insert("end", str(reference))
+
+        def remove_reference():
+            for index in reversed(folder_list.curselection()):
+                references.pop(index)
+                folder_list.delete(index)
+
+        ttk.Button(reference_buttons, text=t("Add", "추가"), command=add_reference).pack(fill="x")
+        ttk.Button(reference_buttons, text=t("Remove", "제거"), command=remove_reference).pack(fill="x", pady=(4, 0))
 
         def apply():
             path = Path(folder.get().strip()).expanduser()
@@ -165,18 +202,28 @@ class App:
                 messagebox.showerror("Agent Council", t("Choose an existing folder.", "기존 폴더를 선택하세요."), parent=dialog)
                 return
             path = path.resolve()
-            selected_coder = next(name for name in CODING_AGENTS if NAMES[name] == coder.get())
+            selected_coder = next((name for name in CODING_AGENTS if NAMES[name] == coder.get()), None)
             selected_reviewers = [name for name in AGENTS if reviewers[name].get() and name != selected_coder]
-            auto = self.chat.auto.get()
+            allow_full = bool(selected_coder and full.get())
+            if allow_full and (not self.full or selected_coder != self.coder or path != self.folder):
+                if not messagebox.askyesno(
+                    "Agent Council",
+                    t("Allow the coding agent to bypass CLI permission checks using your account's permissions?",
+                      "코딩 담당 AI가 현재 계정 권한으로 CLI 권한 확인을 건너뛰도록 허용할까요?"),
+                    parent=dialog,
+                ):
+                    return
             draft = self.chat.input.get("1.0", "end-1c") if path == self.folder else ""
             self.chat.close()
             self.folder, self.coder, self.reviewers, self.lang = path, selected_coder, selected_reviewers, language.get()
-            self.build_chat(auto, draft)
+            self.references = [reference for reference in references if reference != path]
+            self.full = allow_full
+            self.build_chat(draft)
             self.save()
             dialog.destroy()
             self.chat.input.focus_set()
 
-        ttk.Button(panel, text=t("Save settings", "설정 저장"), command=apply).grid(row=5, columnspan=2, sticky="e", pady=(16, 0))
+        ttk.Button(panel, text=t("Save settings", "설정 저장"), command=apply).grid(row=8, columnspan=2, sticky="e", pady=(16, 0))
 
     def update(self):
         self.updating = True

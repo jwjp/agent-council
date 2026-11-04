@@ -34,7 +34,7 @@ def git_context(cwd):
         return ""
 
 
-def project_turn(cwd, messages, request, plan, execute, full_access, coder, reviewers, language, emit):
+def project_turn(cwd, messages, request, full_access, coder, reviewers, references, language, emit, activity):
     history = "\n\n".join(f"{item['role']}: {item['text'][:3200]}" for item in messages[-10:])
     context = (
         f"Respond in {language}. The working directory is the selected project. "
@@ -42,34 +42,40 @@ def project_turn(cwd, messages, request, plan, execute, full_access, coder, revi
         "If the latest message answers a previous clarification, continue the underlying task using that answer. "
         "If a consequential decision cannot be inferred from the project or the conversation, "
         "start with QUESTION on its own line and ask the user before proceeding.\n"
+        "Reference folders are for reading and comparison only. Do not modify them. "
+        "For changes, work in the main project folder.\n"
+        f"<reference_folders>{chr(10).join(map(str, references))}</reference_folders>\n"
         f"<history>{history}</history>\n<request>{request}</request>"
     )
-    if not execute:
-        emit("Planning", coder)
-        result = call(coder, context + "\nStart with PLAN on its own line if the user requests changes or commands. "
-                      "Then explain the proposed plan and checks. Otherwise start with ANSWER and answer directly. "
-                      "Do not modify files.", cwd)
-        if not result["ok"]:
-            return [(coder, result["error"] or "Planning failed.")], ""
-        kind, response = response_parts(result["text"])
-        return [(coder, response)], response if kind == "PLAN" else ""
+    def review(prompt):
+        return parallel(reviewers, prompt, cwd, 2,
+                        lambda _, name, result: emit(("Reviewed" if result["ok"] else "Failed") if name else "Reviewing", name),
+                        review=True, activity=activity)
+
+    if not coder:
+        results = review(context + "\nReview the request and relevant project files. Offer findings and advice only. "
+                         "Do not edit files, install packages, or execute commands that change state. "
+                         "Give evidence, flag uncertainties, and ask for clarification if needed.")
+        return [(name, results[name]["text"] if results[name]["ok"] else results[name]["error"] or "Review failed.")
+                for name in reviewers]
 
     baseline = git_context(cwd) if reviewers else ""
     emit("Implementing", coder)
     result = call(
-        coder, context + f"\n<approved_plan>{plan}</approved_plan>\n"
+        coder, context + "\n"
         "Carry out requested actions, including dependency installation when required. "
         "Preserve unrelated changes. For an informational request, start with ANSWER and answer directly. "
         "Start with IMPLEMENTED if you performed implementation work. "
         "Report changed paths, what you verified, and any command that was blocked.",
-        cwd, implement=True, full_access=full_access,
+        cwd, implement=True, full_access=full_access, activity=activity,
     )
     if not result["ok"]:
-        return [(coder, result["error"] or "Implementation failed.")], ""
+        emit("Failed", coder)
+        return [(coder, result["error"] or "Implementation failed.")]
     kind, report = response_parts(result["text"])
     entries = [(coder, report)]
     if not reviewers or kind in {"ANSWER", "QUESTION"}:
-        return entries, ""
+        return entries
 
     changed = git_context(cwd)
     review_prompt = (
@@ -78,11 +84,12 @@ def project_turn(cwd, messages, request, plan, execute, full_access, coder, revi
         "Check whether the implementation direction fits the request, and identify bugs or missed requirements. "
         "Start with FIX_REQUIRED only if there is a concrete actionable issue, otherwise start with PASS. "
         "Give file references or evidence. State any limits.\n"
-        f"<request>{request}</request>\n<approved_plan>{plan[:3000]}</approved_plan>\n<report>{report[:3500]}</report>\n"
+        f"<reference_folders>{chr(10).join(map(str, references))}</reference_folders>\n"
+        f"<request>{request}</request>\n<report>{report[:3500]}</report>\n"
         f"<before>{baseline[:3500]}</before>\n<after>{changed[:6500]}</after>"
     )
-    reviews = parallel(reviewers, review_prompt, cwd, 2,
-                       lambda _, name, value: emit("Reviewed" if name else "Reviewing", name), review=True)
+    emit("Done", coder)
+    reviews = review(review_prompt)
     findings = []
     for name in reviewers:
         result = reviews[name]
@@ -97,10 +104,12 @@ def project_turn(cwd, messages, request, plan, execute, full_access, coder, revi
             f"<review_findings>{chr(10).join(findings)}</review_findings>\n"
             "Verify the findings against the project, fix confirmed issues within the approved scope, "
             "and report what changed, what you checked and any remaining issues.",
-            cwd, implement=True, full_access=full_access,
+            cwd, implement=True, full_access=full_access, activity=activity,
         )
         entries.append((coder, response_parts(revision["text"])[1] if revision["ok"] else revision["error"] or "Revision failed."))
-    return entries, ""
+        if not revision["ok"]:
+            emit("Failed", coder)
+    return entries
 
 
 def response_parts(text):
@@ -112,10 +121,13 @@ def response_parts(text):
 
 
 class ProjectChat:
-    def __init__(self, parent, cwd, coder, reviewers, language, state_root, names, auto):
-        self.cwd, self.coder, self.reviewers, self.language, self.names = cwd, coder, reviewers, language, names
+    def __init__(self, parent, cwd, coder, reviewers, references, language, state_root, names, full):
+        self.cwd, self.coder, self.reviewers, self.references = cwd, coder, reviewers, references
+        self.language, self.names, self.full = language, names, full
         self.events = queue.Queue()
         self.busy = False
+        self.work = {}
+        self.usage = {}
         key = hashlib.sha256(str(cwd).casefold().encode()).hexdigest()
         self.path = state_root / "chats" / f"{key}.json"
         try:
@@ -123,63 +135,82 @@ class ProjectChat:
         except (OSError, ValueError):
             state = {}
         self.messages = state.get("messages", [])
-        self.pending = state.get("pending")
-        self.auto = tk.BooleanVar(value=auto)
-        self.full = tk.BooleanVar(value=False)
         t = self.t
         panel = self.panel = ttk.Frame(parent, padding=(0, 12, 0, 0))
         panel.pack(fill="both", expand=True)
-        ttk.Label(panel, text=t("Coding", "코딩") + " · " + names[coder] + "   |   " + t("Review", "검수") + " · " +
-                  (", ".join(names.get(agent, agent) for agent in reviewers) or t("None", "없음"))).pack(anchor="w", pady=(3, 8))
-        options = ttk.Frame(panel)
-        options.pack(fill="x")
-        ttk.Checkbutton(options, text=t("Run automatically", "자동 진행"), variable=self.auto).pack(side="left")
-        ttk.Checkbutton(options, text=t("Full execution access", "전체 실행 권한"), variable=self.full, command=self.toggle_full).pack(side="left", padx=12)
+        mode = names[coder] if coder else t("Review only", "검수 전용")
+        ttk.Label(panel, text=mode + "  ·  " + t("Reviewers", "검수자") + "  " +
+                  (", ".join(names[n] for n in reviewers) or t("None", "없음")),
+                  foreground="#36517c", font=("Segoe UI", 10, "bold")).pack(anchor="w")
         transcript = ttk.Frame(panel)
-        transcript.pack(fill="both", expand=True, pady=8)
-        self.view = tk.Text(transcript, wrap="word", padx=14, pady=10, state="disabled", background="#f4f6fa",
+        transcript.pack(fill="both", expand=True, pady=(8, 10))
+        self.view = tk.Text(transcript, wrap="word", padx=16, pady=12, state="disabled", background="#f2f6fc",
                             foreground="#172238", font=("Segoe UI", 11), relief="flat")
         scrollbar = ttk.Scrollbar(transcript, command=self.view.yview)
         self.view.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
         self.view.pack(side="left", fill="both", expand=True)
-        self.view.tag_configure("author", foreground="#3151a5", font=("Segoe UI", 11, "bold"), spacing1=8)
-        self.input = tk.Text(panel, height=4, wrap="word", font=("Segoe UI", 11))
+        self.view.tag_configure("author", foreground="#284a97", font=("Segoe UI", 11, "bold"), spacing1=8)
+        self.view.tag_configure("user", foreground="#12675e", font=("Segoe UI", 11, "bold"), spacing1=8)
+        self.view.tag_configure("body", lmargin1=6, lmargin2=6, spacing1=2, spacing3=3)
+
+        activity = ttk.LabelFrame(panel, text=t("Activity & tokens", "진행 상황 및 토큰"), padding=6)
+        activity.pack(fill="x", pady=(0, 8))
+        ttk.Style().configure("Activity.Treeview", rowheight=22)
+        agents = ([coder] if coder else []) + reviewers
+        self.table = ttk.Treeview(activity, columns=("agent", "state", "usage"), show="headings",
+                                  height=max(1, min(3, len(agents))), style="Activity.Treeview")
+        for column, label, width in (
+            ("agent", t("Agent", "에이전트"), 125),
+            ("state", t("Status / last activity", "상태 / 마지막 활동"), 290),
+            ("usage", t("Input / output · Remaining", "입력 / 출력 · 잔여량"), 210),
+        ):
+            self.table.heading(column, text=label)
+            self.table.column(column, width=width, minwidth=95)
+        scroll = ttk.Scrollbar(activity, command=self.table.yview)
+        self.table.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        self.table.pack(side="top", fill="x")
+        self.table.tag_configure("active", foreground="#2457ab")
+        self.table.tag_configure("failed", foreground="#a12537")
+        self.table.tag_configure("done", foreground="#19684f")
+        for name in agents:
+            self.table.insert("", "end", iid=name, values=(names[name], t("Ready", "준비"), "— / — · —"))
+        ttk.Label(activity, text=t("Token totals are reported usage for this session. — means unavailable.",
+                                  "토큰 수는 이번 세션에서 CLI가 보고한 사용량입니다. —는 확인 불가입니다."),
+                  foreground="#50617b").pack(anchor="w", pady=(3, 0))
+        self.input = tk.Text(panel, height=3, wrap="word", padx=10, pady=7, font=("Segoe UI", 11),
+                             relief="solid", borderwidth=1, highlightcolor="#3c67b8", highlightthickness=1)
         self.input.pack(fill="x")
-        self.input.bind("<Control-Return>", lambda _: (self.send(), "break")[1])
+        self.input.bind("<Return>", lambda _: (self.send(), "break")[1])
+        self.input.bind("<Shift-Return>", self.insert_newline)
         actions = ttk.Frame(panel)
-        actions.pack(fill="x", pady=(8, 0))
+        actions.pack(fill="x", pady=(6, 0))
         self.send_button = ttk.Button(actions, text=t("Send", "보내기"), command=self.send)
         self.send_button.pack(side="right")
-        self.approve_button = ttk.Button(actions, text=t("Approve and run", "승인 후 실행"), command=self.approve)
-        self.approve_button.pack(side="right", padx=8)
-        self.status = ttk.Label(actions, text=t("Ready", "준비"))
-        self.status.pack(side="left")
+        ttk.Label(actions, text=t("Enter to send  ·  Shift+Enter for a new line",
+                                   "Enter 전송  ·  Shift+Enter 줄바꿈"), foreground="#50617b").pack(side="left")
         self.progress = ttk.Progressbar(panel, mode="indeterminate")
-        self.progress.pack(fill="x", pady=(8, 0))
+        self.progress.pack(fill="x", pady=(6, 0))
         for item in self.messages:
             self.render(item)
-        self.buttons()
         self.input.focus_set()
-        self.poll_id = self.panel.after(200, self.poll)
+        self.poll_id = self.panel.after(150, self.poll)
 
     def t(self, english, korean):
         return korean if self.language == "Korean" else english
 
-    def toggle_full(self):
-        if self.full.get() and not messagebox.askyesno(
-            "Agent Council",
-            self.t(f"Allow {self.names[self.coder]} to run commands and edit files without CLI permission checks?",
-                   f"{self.names[self.coder]}가 CLI 권한 확인 없이 명령을 실행하고 파일을 수정하도록 허용할까요?"),
-            parent=self.panel,
-        ):
-            self.full.set(False)
+    def insert_newline(self, _event):
+        self.input.insert("insert", "\n")
+        self.input.see("insert")
+        return "break"
 
     def render(self, item):
         self.view.configure(state="normal")
-        role = self.t("You", "나") if item["role"] == "You" else self.names.get(item["role"], item["role"])
-        self.view.insert("end", role + "\n", "author")
-        self.view.insert("end", item["text"] + "\n\n")
+        user = item["role"] == "You"
+        role = self.t("You", "나") if user else self.names.get(item["role"], item["role"])
+        self.view.insert("end", role + "\n", "user" if user else "author")
+        self.view.insert("end", item["text"] + "\n\n", "body")
         self.view.configure(state="disabled")
         self.view.see("end")
 
@@ -187,82 +218,98 @@ class ProjectChat:
         item = {"role": role, "text": text}
         self.messages.append(item)
         self.render(item)
-        self.save()
-
-    def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temp = self.path.with_suffix(".tmp")
-        temp.write_text(json.dumps({"messages": self.messages, "pending": self.pending}, ensure_ascii=False), encoding="utf-8")
+        temp.write_text(json.dumps({"messages": self.messages}, ensure_ascii=False), encoding="utf-8")
         temp.replace(self.path)
-
-    def buttons(self):
-        self.send_button.state(["disabled" if self.busy else "!disabled"])
-        self.approve_button.state(["!disabled" if self.pending and not self.busy else "disabled"])
 
     def send(self):
         request = self.input.get("1.0", "end-1c").strip()
         if self.busy or not request:
             return
-        if not self.coder_available():
+        if not self.coder and not self.reviewers:
+            messagebox.showerror("Agent Council", self.t("Choose a coding agent or a reviewer in Settings.",
+                                                         "설정에서 코딩 담당 AI 또는 검수자를 선택하세요."), parent=self.panel)
             return
-        self.pending = None
-        self.input.delete("1.0", "end")
-        self.start(request, "", self.auto.get())
-
-    def approve(self):
-        if self.pending and not self.busy and self.coder_available():
-            request, plan = self.pending
-            self.pending = None
-            self.start(request, plan, True)
-
-    def coder_available(self):
-        if shutil.which(self.coder):
-            return True
-        messagebox.showerror("Agent Council", self.t("CLI not found on PATH: ", "PATH에서 CLI를 찾을 수 없습니다: ") +
-                             self.names[self.coder], parent=self.panel)
-        return False
-
-    def start(self, request, plan, execute):
+        if self.coder and not shutil.which(self.coder):
+            messagebox.showerror("Agent Council", self.t("CLI not found on PATH: ", "PATH에서 CLI를 찾을 수 없습니다: ") +
+                                 self.names[self.coder], parent=self.panel)
+            return
         self.busy = True
-        self.started = time.monotonic()
-        self.phase = self.t("Starting", "시작 중")
+        self.work.clear()
+        for name in self.table.get_children():
+            self.table.item(name, tags=())
+            self.table.set(name, "state", self.t("Queued", "대기"))
+        self.input.delete("1.0", "end")
+        self.send_button.state(["disabled"])
         self.progress.start(15)
-        self.buttons()
         history = list(self.messages)
-        self.add("You", self.t("Approved implementation", "구현 승인") if plan else request)
-        full = self.full.get()
+        self.add("You", request)
 
         def worker():
             try:
-                entries, proposed = project_turn(
-                    self.cwd, history, request, plan, execute, full, self.coder, self.reviewers, self.language,
+                entries = project_turn(
+                    self.cwd, history, request, self.full, self.coder, self.reviewers, self.references, self.language,
                     lambda *event: self.events.put(("phase", event)),
+                    lambda *event: self.events.put(("activity", event)),
                 )
-                self.events.put(("done", (entries, (request, proposed) if proposed else None)))
             except Exception as exc:
-                self.events.put(("done", ([("Agent Council", str(exc))], None)))
+                self.events.put(("phase", ("Failed", self.coder)))
+                entries = [("Agent Council", str(exc))]
+            self.events.put(("done", entries))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def phase(self, phase, name):
+        translations = {
+            "Implementing": "작업 중", "Reviewing": "검수 중", "Reviewed": "검수 완료",
+            "Revising": "검수 반영 중", "Done": "완료", "Failed": "실패",
+        }
+        for agent in ([name] if name else self.reviewers):
+            label = self.t(phase, translations[phase])
+            if phase in {"Done", "Reviewed", "Failed"}:
+                self.work.pop(agent, None)
+                self.table.item(agent, tags=("failed" if phase == "Failed" else "done",))
+                self.table.set(agent, "state", label)
+            else:
+                self.work[agent] = (label, time.monotonic(), None, False)
+                self.table.item(agent, tags=("active",))
 
     def poll(self):
         while not self.events.empty():
             kind, value = self.events.get()
             if kind == "phase":
-                phase, name = value
-                translated = {"Planning": "검토 중", "Implementing": "구현 중", "Reviewing": "교차 검토 중",
-                              "Reviewed": "검토 응답 도착", "Revising": "검토 결과 반영 중"}
-                self.phase = self.t(phase, translated[phase]) + (f" · {self.names.get(name, name)}" if name else "")
+                self.phase(*value)
+            elif kind == "activity":
+                name, event, detail = value
+                if event == "output" and name in self.work:
+                    label, started, _, _ = self.work[name]
+                    self.work[name] = (label, started, time.monotonic(), detail in {"tool_use", "command_execution", "file_change"})
+                elif event == "usage":
+                    totals = self.usage.setdefault(name, {})
+                    for key, count in detail.items():
+                        totals[key] = totals.get(key, 0) + count
+                    self.table.set(name, "usage", f"{totals.get('input_tokens', '—')} / {totals.get('output_tokens', '—')} · —")
             else:
-                entries, self.pending = value
-                for role, text in entries:
+                for role, text in value:
                     self.add(role, text)
+                for name in list(self.work):
+                    self.phase("Done", name)
+                for name in self.table.get_children():
+                    if self.table.set(name, "state") == self.t("Queued", "대기"):
+                        self.table.set(name, "state", self.t("Skipped", "생략"))
                 self.busy = False
                 self.progress.stop()
-                self.buttons()
-                self.status.configure(text=self.t("Ready", "준비"))
-        if self.busy:
-            self.status.configure(text=f"{self.phase} · {int(time.monotonic() - self.started)}s")
-        self.poll_id = self.panel.after(200, self.poll)
+                self.send_button.state(["!disabled"])
+        now = time.monotonic()
+        for name, (label, started, last_output, tool) in self.work.items():
+            if last_output is None:
+                detail = self.t("waiting for output", "첫 출력 대기")
+            else:
+                detail = self.t("tool event", "도구 이벤트") if tool else self.t("output", "출력")
+                detail += f" {int(now - last_output)}s " + self.t("ago", "전")
+            self.table.set(name, "state", f"{label} · {int(now-started)}s · {detail}")
+        self.poll_id = self.panel.after(150, self.poll)
 
     def close(self):
         self.panel.after_cancel(self.poll_id)
