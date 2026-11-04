@@ -14,12 +14,13 @@ from tkinter import filedialog, messagebox, ttk
 from urllib.request import Request, urlopen
 
 from multi_ai import AGENTS, implement_recommendation, run_council
+from project_chat import ProjectChat
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 REPO = "jwjp/agent-council"
 ASSET = "AgentCouncil.exe"
 CONFIG = Path(os.getenv("LOCALAPPDATA", Path.home())) / "AgentCouncil" / "settings.json"
-NAMES = dict(zip(AGENTS, ("Codex", "Claude Code", "Antigravity", "Grok", "Cursor Agent")))
+NAMES = dict(zip(AGENTS, ("Codex", "Claude Code", "Antigravity", "Grok", "Cursor Agent", "Gemini CLI")))
 
 
 def check_update():
@@ -65,6 +66,7 @@ class App:
         self.updating = False
         self.runs = {}
         self.documents = {}
+        self.chat = None
         try:
             self.config = json.loads(CONFIG.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -118,6 +120,7 @@ class App:
         self.run_button.pack(side="left")
         self.implement_button = ttk.Button(row, text=t("Implement recommendation", "추천안으로 진행"), command=self.implement)
         self.implement_button.pack(side="left", padx=8)
+        ttk.Button(row, text=t("Project chat", "프로젝트 채팅"), command=self.open_chat).pack(side="left")
         self.update_button = ttk.Button(row, text=t("Check for updates", "업데이트 확인"), command=self.update)
         self.update_button.pack(side="right")
         self.status = ttk.Label(self.body, text=t("Ready", "준비"))
@@ -240,6 +243,23 @@ class App:
     def response_language(self):
         return "Korean" if self.lang.get() == "한국어" else "English"
 
+    def open_chat(self):
+        if self.busy or self.updating:
+            return
+        if self.chat and self.chat.window.winfo_exists():
+            self.chat.window.lift()
+            return
+        folder = Path(self.folder.get()).expanduser()
+        if not self.folder.get().strip() or not folder.is_dir() or not self.agents["claude"].get() or not shutil.which("claude"):
+            messagebox.showerror("Agent Council", self.t("Select a project folder and connect Claude Code in Settings.",
+                                                        "프로젝트 폴더를 선택하고 설정에서 Claude Code를 연결하세요."))
+            return
+        self.save()
+        reviewers = [name for name in AGENTS if name != "claude" and self.agents[name].get()]
+        self.chat = ProjectChat(self.root, folder.resolve(), reviewers, self.response_language(), CONFIG.parent, NAMES)
+        self.chat.window.transient(self.root)
+        self.chat.window.grab_set()
+
     def implement(self):
         t = self.t
         self.refresh_runs()
@@ -288,6 +308,9 @@ class App:
         threading.Thread(target=worker, daemon=True).start()
 
     def close(self):
+        if self.chat and self.chat.window.winfo_exists():
+            self.chat.close()
+            return
         if self.busy or self.updating:
             messagebox.showinfo("Agent Council", self.t("Wait for the current operation to finish.", "현재 작업이 끝날 때까지 기다려 주세요."))
             return

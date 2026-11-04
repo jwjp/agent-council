@@ -11,21 +11,27 @@ import sys
 import tempfile
 
 
-AGENTS = ("codex", "claude", "agy", "grok", "agent")
+AGENTS = ("codex", "claude", "agy", "grok", "agent", "gemini")
 TIMEOUT_SECONDS = 300
 MAX_TEXT = 2400
 
 
-def command(name: str, prompt: str, *, implement=False) -> list[str]:
+def command(name: str, prompt: str, *, implement=False, full_access=False) -> list[str]:
     executable = shutil.which(name)
     if not executable:
         raise RuntimeError(f"CLI not found: {name}")
     if name == "codex":
         return [executable, "exec", "--sandbox", "workspace-write" if implement else "read-only", "--skip-git-repo-check", "-"]
     if name == "claude":
+        if implement:
+            return [executable, "--print", *(
+                ["--dangerously-skip-permissions"] if full_access else ["--permission-mode", "acceptEdits"]
+            )]
         return [executable, "--print", "--tools="]
     if name == "agy":
         return [executable, "--mode", "plan", "--print", prompt]
+    if name == "gemini":
+        return [executable, "--approval-mode", "plan", "--prompt", "Respond to the request above."]
     if name == "grok":
         return [executable, "--permission-mode", "plan", "--single", prompt]
     launcher = [executable]
@@ -39,11 +45,11 @@ def command(name: str, prompt: str, *, implement=False) -> list[str]:
     return [*launcher, "--print", "--mode", "ask", "--sandbox", "enabled", "--", prompt]
 
 
-def call(name: str, prompt: str, cwd: Path, *, implement=False) -> dict:
+def call(name: str, prompt: str, cwd: Path, *, implement=False, full_access=False) -> dict:
     try:
-        uses_stdin = name in ("codex", "claude")
+        uses_stdin = name in ("codex", "claude", "gemini")
         result = subprocess.run(
-            command(name, prompt, implement=implement), cwd=cwd,
+            command(name, prompt, implement=implement, full_access=full_access), cwd=cwd,
             input=prompt if uses_stdin else None,
             stdin=None if uses_stdin else subprocess.DEVNULL,
             capture_output=True, text=True, encoding="utf-8", errors="replace",
