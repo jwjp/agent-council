@@ -1,0 +1,5 @@
+__pycache__/
+multi_ai_runs/
+build/
+dist/
+*.spec
