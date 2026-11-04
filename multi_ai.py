@@ -5,17 +5,82 @@ import concurrent.futures
 import datetime as dt
 import json
 from pathlib import Path
+import queue
 import shutil
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 
 AGENTS = ("codex", "claude", "agy", "grok", "agent", "gemini")
 CODING_AGENTS = ("claude", "codex")
 TIMEOUT_SECONDS = 300
 MAX_TEXT = 2400
+
+
+def codex_rate_limits(cwd):
+    """Read account limits through the signed-in local Codex app server."""
+    executable = shutil.which("codex")
+    if not executable:
+        raise RuntimeError("Codex CLI not found.")
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    with subprocess.Popen(
+        [executable, "app-server", "--listen", "stdio://"], cwd=cwd,
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        text=True, encoding="utf-8", errors="replace", creationflags=flags,
+    ) as process:
+        inbox = queue.Queue()
+
+        def read():
+            for line in process.stdout:
+                try:
+                    inbox.put(json.loads(line))
+                except ValueError:
+                    continue
+            inbox.put(None)
+
+        reader = threading.Thread(target=read, daemon=True)
+        reader.start()
+        deadline = time.monotonic() + 15
+
+        def send(message):
+            process.stdin.write(json.dumps(message) + "\n")
+            process.stdin.flush()
+
+        def receive(request_id):
+            while True:
+                try:
+                    response = inbox.get(timeout=max(0, deadline - time.monotonic()))
+                except queue.Empty:
+                    raise RuntimeError("Codex did not return usage within 15 seconds.") from None
+                if response is None:
+                    raise RuntimeError("Codex closed the usage connection.")
+                if isinstance(response, dict) and response.get("id") == request_id:
+                    if "error" in response:
+                        raise RuntimeError(response["error"].get("message", "Codex usage is unavailable."))
+                    return response["result"]
+
+        try:
+            send({"id": 1, "method": "initialize", "params": {
+                "clientInfo": {"name": "agent_council", "version": "1.4.1"},
+            }})
+            receive(1)
+            send({"method": "initialized"})
+            send({"id": 2, "method": "account/rateLimits/read"})
+            return receive(2)
+        finally:
+            process.stdin.close()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                if sys.platform == "win32":
+                    subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                   capture_output=True, creationflags=flags, timeout=5, check=False)
+                if process.poll() is None:
+                    process.kill()
+            reader.join(timeout=1)
 
 
 def command(name: str, prompt: str, *, implement=False, full_access=False, review=False) -> list[str]:

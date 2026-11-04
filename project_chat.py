@@ -121,13 +121,13 @@ def response_parts(text):
 
 
 class ProjectChat:
-    def __init__(self, parent, cwd, coder, reviewers, references, language, state_root, names, full):
+    def __init__(self, parent, cwd, coder, reviewers, references, language, state_root, names, full, show_usage):
         self.cwd, self.coder, self.reviewers, self.references = cwd, coder, reviewers, references
         self.language, self.names, self.full = language, names, full
+        self.show_usage = show_usage
         self.events = queue.Queue()
         self.busy = False
         self.work = {}
-        self.usage = {}
         key = hashlib.sha256(str(cwd).casefold().encode()).hexdigest()
         self.path = state_root / "chats" / f"{key}.json"
         try:
@@ -135,16 +135,19 @@ class ProjectChat:
         except (OSError, ValueError):
             state = {}
         self.messages = state.get("messages", [])
+        self.usage = state.get("usage", {})
         t = self.t
         panel = self.panel = ttk.Frame(parent, padding=(0, 12, 0, 0))
         panel.pack(fill="both", expand=True)
+        panel.columnconfigure(0, weight=1)
+        panel.rowconfigure(1, weight=1)
         mode = names[coder] if coder else t("Review only", "검수 전용")
         ttk.Label(panel, text=mode + "  ·  " + t("Reviewers", "검수자") + "  " +
                   (", ".join(names[n] for n in reviewers) or t("None", "없음")),
-                  foreground="#36517c", font=("Segoe UI", 10, "bold")).pack(anchor="w")
+                  foreground="#36517c", font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky="w")
         transcript = ttk.Frame(panel)
-        transcript.pack(fill="both", expand=True, pady=(8, 10))
-        self.view = tk.Text(transcript, wrap="word", padx=16, pady=12, state="disabled", background="#f2f6fc",
+        transcript.grid(row=1, column=0, sticky="nsew", pady=(8, 10))
+        self.view = tk.Text(transcript, height=1, wrap="word", padx=16, pady=12, state="disabled", background="#f2f6fc",
                             foreground="#172238", font=("Segoe UI", 11), relief="flat")
         scrollbar = ttk.Scrollbar(transcript, command=self.view.yview)
         self.view.configure(yscrollcommand=scrollbar.set)
@@ -155,7 +158,7 @@ class ProjectChat:
         self.view.tag_configure("body", lmargin1=6, lmargin2=6, spacing1=2, spacing3=3)
 
         activity = ttk.LabelFrame(panel, text=t("Activity & tokens", "진행 상황 및 토큰"), padding=6)
-        activity.pack(fill="x", pady=(0, 8))
+        activity.grid(row=2, column=0, sticky="ew", pady=(0, 8))
         ttk.Style().configure("Activity.Treeview", rowheight=22)
         agents = ([coder] if coder else []) + reviewers
         self.table = ttk.Treeview(activity, columns=("agent", "state", "usage"), show="headings",
@@ -163,7 +166,7 @@ class ProjectChat:
         for column, label, width in (
             ("agent", t("Agent", "에이전트"), 125),
             ("state", t("Status / last activity", "상태 / 마지막 활동"), 290),
-            ("usage", t("Input / output · Remaining", "입력 / 출력 · 잔여량"), 210),
+            ("usage", t("Tokens in / out", "입력 / 출력 토큰"), 165),
         ):
             self.table.heading(column, text=label)
             self.table.column(column, width=width, minwidth=95)
@@ -175,23 +178,23 @@ class ProjectChat:
         self.table.tag_configure("failed", foreground="#a12537")
         self.table.tag_configure("done", foreground="#19684f")
         for name in agents:
-            self.table.insert("", "end", iid=name, values=(names[name], t("Ready", "준비"), "— / — · —"))
-        ttk.Label(activity, text=t("Token totals are reported usage for this session. — means unavailable.",
-                                  "토큰 수는 이번 세션에서 CLI가 보고한 사용량입니다. —는 확인 불가입니다."),
+            self.table.insert("", "end", iid=name, values=(names[name], t("Ready", "준비"), self.token_text(name)))
+        ttk.Label(activity, text=t("Reported usage in this project. — means no data.",
+                                  "이 프로젝트에서 보고된 사용량입니다. —는 데이터 없음입니다."),
                   foreground="#50617b").pack(anchor="w", pady=(3, 0))
         self.input = tk.Text(panel, height=3, wrap="word", padx=10, pady=7, font=("Segoe UI", 11),
                              relief="solid", borderwidth=1, highlightcolor="#3c67b8", highlightthickness=1)
-        self.input.pack(fill="x")
+        self.input.grid(row=3, column=0, sticky="ew")
         self.input.bind("<Return>", lambda _: (self.send(), "break")[1])
         self.input.bind("<Shift-Return>", self.insert_newline)
         actions = ttk.Frame(panel)
-        actions.pack(fill="x", pady=(6, 0))
+        actions.grid(row=4, column=0, sticky="ew", pady=(6, 0))
         self.send_button = ttk.Button(actions, text=t("Send", "보내기"), command=self.send)
         self.send_button.pack(side="right")
         ttk.Label(actions, text=t("Enter to send  ·  Shift+Enter for a new line",
                                    "Enter 전송  ·  Shift+Enter 줄바꿈"), foreground="#50617b").pack(side="left")
         self.progress = ttk.Progressbar(panel, mode="indeterminate")
-        self.progress.pack(fill="x", pady=(6, 0))
+        self.progress.grid(row=5, column=0, sticky="ew", pady=(6, 0))
         for item in self.messages:
             self.render(item)
         self.input.focus_set()
@@ -218,13 +221,24 @@ class ProjectChat:
         item = {"role": role, "text": text}
         self.messages.append(item)
         self.render(item)
+        self.save()
+
+    def token_text(self, name):
+        totals = self.usage.get(name, {})
+        return " / ".join(f"{totals[key]:,}" if key in totals else "—" for key in ("input_tokens", "output_tokens"))
+
+    def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temp = self.path.with_suffix(".tmp")
-        temp.write_text(json.dumps({"messages": self.messages}, ensure_ascii=False), encoding="utf-8")
+        temp.write_text(json.dumps({"messages": self.messages, "usage": self.usage}, ensure_ascii=False), encoding="utf-8")
         temp.replace(self.path)
 
     def send(self):
         request = self.input.get("1.0", "end-1c").strip()
+        if request.lower() == "/usage":
+            self.input.delete("1.0", "end")
+            self.show_usage()
+            return
         if self.busy or not request:
             return
         if not self.coder and not self.reviewers:
@@ -289,7 +303,8 @@ class ProjectChat:
                     totals = self.usage.setdefault(name, {})
                     for key, count in detail.items():
                         totals[key] = totals.get(key, 0) + count
-                    self.table.set(name, "usage", f"{totals.get('input_tokens', '—')} / {totals.get('output_tokens', '—')} · —")
+                    self.table.set(name, "usage", self.token_text(name))
+                    self.save()
             else:
                 for role, text in value:
                     self.add(role, text)
