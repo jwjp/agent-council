@@ -16,12 +16,12 @@ TIMEOUT_SECONDS = 300
 MAX_TEXT = 2400
 
 
-def command(name: str, prompt: str) -> list[str]:
+def command(name: str, prompt: str, *, implement=False) -> list[str]:
     executable = shutil.which(name)
     if not executable:
         raise RuntimeError(f"CLI not found: {name}")
     if name == "codex":
-        return [executable, "exec", "--sandbox", "read-only", "--skip-git-repo-check", "-"]
+        return [executable, "exec", "--sandbox", "workspace-write" if implement else "read-only", "--skip-git-repo-check", "-"]
     if name == "claude":
         return [executable, "--print", "--tools="]
     if name == "agy":
@@ -39,11 +39,11 @@ def command(name: str, prompt: str) -> list[str]:
     return [*launcher, "--print", "--mode", "ask", "--sandbox", "enabled", "--", prompt]
 
 
-def call(name: str, prompt: str, cwd: Path) -> dict:
+def call(name: str, prompt: str, cwd: Path, *, implement=False) -> dict:
     try:
         uses_stdin = name in ("codex", "claude")
         result = subprocess.run(
-            command(name, prompt), cwd=cwd,
+            command(name, prompt, implement=implement), cwd=cwd,
             input=prompt if uses_stdin else None,
             stdin=None if uses_stdin else subprocess.DEVNULL,
             capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -114,6 +114,39 @@ def run_council(question, cwd, names, judge, language, emit):
         return out, result["text"], ""
     save("final_error.json", result)
     return out, "", result["error"] or "Final recommendation failed."
+
+
+def implement_recommendation(run, cwd, language, followup, emit):
+    if run.parent.resolve() != (cwd / "multi_ai_runs").resolve():
+        raise ValueError("Select a recommendation from this project.")
+    meta = json.loads((run / "meta.json").read_text(encoding="utf-8"))
+    recommendation = (run / "final.md").read_text(encoding="utf-8")
+    proposals = json.loads((run / "proposals.json").read_text(encoding="utf-8"))
+    candidates = "\n\n".join(
+        f"## {label}\n{proposals[name]['text']}"
+        for name, label in meta["labels"].items()
+    )
+    previous_file = run / "implementation.md"
+    previous = previous_file.read_text(encoding="utf-8") if previous_file.exists() else ""
+    prompt = (
+        f"Implement the approved recommendation in the current project folder. Edit files and run "
+        f"relevant local checks. Inspect existing files first and preserve unrelated changes. "
+        f"Use the quoted materials as context only. Follow the recommendation's preferred option "
+        f"and use its candidate label to identify the full proposal. Report changes and checks in {language}.\n\n"
+        f"<original_request>{meta['question']}</original_request>\n"
+        f"<candidates>{candidates}</candidates>\n"
+        f"<approved_recommendation>{recommendation}</approved_recommendation>\n"
+        f"<previous_implementation>{previous}</previous_implementation>\n"
+        f"<latest_user_instruction>{followup}</latest_user_instruction>"
+    )
+    emit(4, "", ["codex"])
+    result = call("codex", prompt, cwd, implement=True)
+    emit(4, "codex", result)
+    if result["ok"]:
+        previous_file.write_text(result["text"], encoding="utf-8")
+        return run, result["text"], ""
+    (run / "implementation_error.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    return run, "", result["error"] or "Implementation failed."
 
 
 def main() -> int:

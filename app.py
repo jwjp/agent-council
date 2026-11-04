@@ -13,9 +13,9 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from urllib.request import Request, urlopen
 
-from multi_ai import AGENTS, run_council
+from multi_ai import AGENTS, implement_recommendation, run_council
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 REPO = "jwjp/agent-council"
 ASSET = "AgentCouncil.exe"
 CONFIG = Path(os.getenv("LOCALAPPDATA", Path.home())) / "AgentCouncil" / "settings.json"
@@ -63,6 +63,8 @@ class App:
         self.active = {}
         self.busy = False
         self.updating = False
+        self.runs = {}
+        self.documents = {}
         try:
             self.config = json.loads(CONFIG.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -77,6 +79,7 @@ class App:
         self.body = ttk.Frame(root, padding=16)
         self.body.pack(fill="both", expand=True)
         self.build()
+        self.refresh_runs()
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.after(200, self.poll)
 
@@ -98,7 +101,7 @@ class App:
         ttk.Label(row, text=t("Project folder", "프로젝트 폴더")).pack(side="left", padx=(0, 8))
         entry = ttk.Entry(row, textvariable=self.folder)
         entry.pack(side="left", fill="x", expand=True)
-        entry.bind("<FocusOut>", lambda _: self.save())
+        entry.bind("<FocusOut>", lambda _: (self.save(), self.refresh_runs()))
         ttk.Button(row, text=t("Browse", "찾아보기"), command=self.pick).pack(side="right", padx=(8, 0))
         row = ttk.Frame(settings)
         row.pack(fill="x", pady=(8, 0))
@@ -113,6 +116,8 @@ class App:
         row.pack(fill="x", pady=8)
         self.run_button = ttk.Button(row, text=t("Run council", "회의 시작"), command=self.run)
         self.run_button.pack(side="left")
+        self.implement_button = ttk.Button(row, text=t("Implement recommendation", "추천안으로 진행"), command=self.implement)
+        self.implement_button.pack(side="left", padx=8)
         self.update_button = ttk.Button(row, text=t("Check for updates", "업데이트 확인"), command=self.update)
         self.update_button.pack(side="right")
         self.status = ttk.Label(self.body, text=t("Ready", "준비"))
@@ -127,6 +132,14 @@ class App:
         self.table.tag_configure("success", foreground="#167640")
         self.table.tag_configure("failure", foreground="#b32929")
         self.table.pack(fill="x")
+        results = ttk.Frame(self.body)
+        results.pack(fill="x", pady=(8, 0))
+        self.run_picker = ttk.Combobox(results, state="readonly", width=33)
+        self.run_picker.pack(side="left")
+        self.run_picker.bind("<<ComboboxSelected>>", lambda _: self.load_run())
+        self.document_picker = ttk.Combobox(results, state="readonly", width=36)
+        self.document_picker.pack(side="left", padx=8)
+        self.document_picker.bind("<<ComboboxSelected>>", lambda _: self.show(self.documents[self.document_picker.get()]))
         self.output = tk.Text(self.body, wrap="word", state="disabled")
         self.output.pack(fill="both", expand=True, pady=(8, 0))
 
@@ -144,6 +157,7 @@ class App:
         for child in self.body.winfo_children():
             child.destroy()
         self.build()
+        self.refresh_runs()
         self.question.insert("1.0", prompt)
         self.show(output)
 
@@ -152,6 +166,48 @@ class App:
         if path:
             self.folder.set(path)
             self.save()
+            self.refresh_runs()
+
+    def refresh_runs(self, selected=None):
+        if self.busy:
+            return
+        current = self.runs.get(self.run_picker.get())
+        self.runs = {}
+        if self.folder.get().strip():
+            directory = Path(self.folder.get()).expanduser().resolve() / "multi_ai_runs"
+            for path in sorted(directory.glob("*/final.md"), reverse=True):
+                try:
+                    meta = json.loads(path.with_name("meta.json").read_text(encoding="utf-8"))
+                    if meta["final_ok"] and isinstance(meta["labels"], dict):
+                        self.runs[f"{path.parent.name} · {meta['question'][:55]}"] = path.parent
+                except (OSError, ValueError, KeyError):
+                    continue
+        self.run_picker.configure(values=list(self.runs))
+        target = selected or current
+        key = next((key for key, path in self.runs.items() if path == target), next(iter(self.runs), ""))
+        self.run_picker.set(key)
+        self.load_run()
+
+    def load_run(self):
+        self.documents = {}
+        run = self.runs.get(self.run_picker.get())
+        self.implement_button.state(["!disabled" if run and not self.busy else "disabled"])
+        if run:
+            meta = json.loads((run / "meta.json").read_text(encoding="utf-8"))
+            authors = "\n".join(f"{label} · {NAMES.get(name, name)}" for name, label in meta["labels"].items())
+            title = self.t("Recommendation", "최종 추천")
+            self.documents[title] = f"{meta['question']}\n\n{authors}\n\n" + (run / "final.md").read_text(encoding="utf-8")
+            for filename, prefix in (("proposals.json", self.t("Proposal", "초안")), ("reviews.json", self.t("Review", "평가"))):
+                path = run / filename
+                if path.exists():
+                    for name, result in json.loads(path.read_text(encoding="utf-8")).items():
+                        label = meta["labels"].get(name, "—") if filename == "proposals.json" else ""
+                        self.documents[f"{prefix} {label} · {NAMES.get(name, name)}"] = result["text"] or result["error"]
+            if (run / "implementation.md").exists():
+                self.documents[self.t("Implementation · Codex", "구현 결과 · Codex")] = (run / "implementation.md").read_text(encoding="utf-8")
+        self.document_picker.configure(values=list(self.documents))
+        self.document_picker.set(next(iter(self.documents), ""))
+        self.show(self.documents.get(self.document_picker.get(), ""))
 
     def show(self, value):
         self.output.configure(state="normal")
@@ -164,6 +220,12 @@ class App:
         names = [name for name in AGENTS if self.agents[name].get()]
         cwd = Path(self.folder.get()).expanduser()
         question = self.question.get("1.0", "end-1c").strip()
+        approval = " ".join(question.lower().rstrip(".!").split())
+        if approval.replace(" ", "") in {"추천안으로진행하자", "추천안으로진행해줘", "추천안으로진행", "추천안으로시작하자", "추천안으로시작", "추천안으로시작해줘", "추천안으로진행해주세요"} or approval in {
+            "implement the recommendation", "proceed with the recommendation", "start with the recommendation",
+        }:
+            self.implement()
+            return
         if not question or not self.folder.get().strip() or not cwd.is_dir() or len(names) < 2:
             messagebox.showerror("Agent Council", t("Enter a question, select an existing folder and at least two agents.",
                                                    "질문을 입력하고 기존 폴더와 에이전트 두 개 이상을 선택하세요."))
@@ -172,17 +234,40 @@ class App:
         if missing:
             messagebox.showerror("Agent Council", t("CLI not found on PATH: ", "PATH에서 CLI를 찾을 수 없습니다: ") + ", ".join(missing))
             return
+        language = self.response_language()
+        self.start_run(lambda emit: run_council(question, cwd.resolve(), names, names[0], language, emit))
+
+    def response_language(self):
+        return "Korean" if self.lang.get() == "한국어" else "English"
+
+    def implement(self):
+        t = self.t
+        self.refresh_runs()
+        run = self.runs.get(self.run_picker.get())
+        if not run or not self.agents["codex"].get() or not shutil.which("codex"):
+            messagebox.showerror("Agent Council", t("Select a saved recommendation and connect Codex in Settings.",
+                                                   "저장된 추천안을 선택하고 설정에서 Codex를 연결하세요."))
+            return
+        cwd = run.parent.parent.resolve()
+        followup = self.question.get("1.0", "end-1c").strip()
+        language = self.response_language()
+        if messagebox.askyesno("Agent Council", t(f"Let Codex implement this recommendation in {cwd}?",
+                                                 f"Codex가 {cwd} 폴더에 이 추천안을 구현하도록 할까요?")):
+            self.start_run(lambda emit: implement_recommendation(run, cwd, language, followup, emit))
+
+    def start_run(self, operation):
         self.save()
         self.busy = True
         self.run_button.state(["disabled"])
+        self.implement_button.state(["disabled"])
+        self.run_picker.configure(state="disabled")
         self.bar.start(15)
         self.show("")
-        language = "Korean" if self.lang.get() == "한국어" else "English"
+        self.question.delete("1.0", "end")
 
         def worker():
             try:
-                result = run_council(question, cwd.resolve(), names, names[0], language,
-                                     lambda *event: self.events.put(("progress", event)))
+                result = operation(lambda *event: self.events.put(("progress", event)))
                 self.events.put(("done", result))
             except Exception as exc:
                 self.events.put(("done", (None, "", str(exc))))
@@ -221,7 +306,7 @@ class App:
                     self.active.clear()
                     self.table.delete(*self.table.get_children())
                     labels = (t("Proposals", "초안"), t("Cross-review", "상호 평가"), t("Recommendation", "최종 추천"))
-                    self.status.configure(text=f"{phase}/3  {labels[phase - 1]}")
+                    self.status.configure(text=f"{phase}/3  {labels[phase - 1]}" if phase < 4 else t("Implementing with Codex", "Codex가 구현 중"))
                     for agent in data:
                         self.active[agent] = time.monotonic()
                         self.table.insert("", "end", iid=agent, values=(NAMES[agent], t("Waiting for CLI response", "CLI 응답 대기 중"), "0s"))
@@ -236,8 +321,16 @@ class App:
                 self.bar.stop()
                 self.run_button.state(["!disabled"])
                 path, answer, error = value
+                self.run_picker.configure(state="readonly")
+                self.refresh_runs(path)
                 self.status.configure(text=t("Finished", "완료") if not error else t("Run failed", "실행 실패"))
-                self.show((f"{path}\n\n" if path else "") + (answer or error))
+                if error:
+                    self.show((f"{path}\n\n" if path else "") + error)
+                elif answer != "" and path and (path / "implementation.md").exists():
+                    title = t("Implementation · Codex", "구현 결과 · Codex")
+                    if title in self.documents:
+                        self.document_picker.set(title)
+                        self.show(self.documents[title])
             elif kind == "available" and value:
                 version, asset = value
                 if messagebox.askyesno("Agent Council", t(f"Download {version}?", f"{version} 업데이트를 다운로드할까요?")):
