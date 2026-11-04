@@ -25,7 +25,7 @@ The app keeps one local transcript per folder under `%LOCALAPPDATA%\AgentCouncil
 
 ## Updates
 
-Click **Check for updates** and confirm the download. The app checks the download against GitHub's SHA-256 digest. Close Agent Council and reopen it with the included launcher to apply the update.
+Click **Check for updates** and confirm installation. The app verifies GitHub's SHA-256 digest, then closes, replaces the executable, and restarts automatically. When upgrading from 1.4.1 or earlier, use the old launcher's restart step once, or download the new ZIP.
 
 ## Build from source
 

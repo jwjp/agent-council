@@ -127,6 +127,7 @@ class ProjectChat:
         self.show_usage = show_usage
         self.events = queue.Queue()
         self.busy = False
+        self.paused = False
         self.work = {}
         key = hashlib.sha256(str(cwd).casefold().encode()).hexdigest()
         self.path = state_root / "chats" / f"{key}.json"
@@ -147,15 +148,15 @@ class ProjectChat:
                   foreground="#36517c", font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky="w")
         transcript = ttk.Frame(panel)
         transcript.grid(row=1, column=0, sticky="nsew", pady=(8, 10))
-        self.view = tk.Text(transcript, height=1, wrap="word", padx=16, pady=12, state="disabled", background="#f2f6fc",
-                            foreground="#172238", font=("Segoe UI", 11), relief="flat")
+        self.view = tk.Text(transcript, height=1, wrap="word", padx=14, pady=10, state="disabled", background="#f4f7fb",
+                            foreground="#172238", font=("Segoe UI", 10), relief="flat")
         scrollbar = ttk.Scrollbar(transcript, command=self.view.yview)
         self.view.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
         self.view.pack(side="left", fill="both", expand=True)
-        self.view.tag_configure("author", foreground="#284a97", font=("Segoe UI", 11, "bold"), spacing1=8)
-        self.view.tag_configure("user", foreground="#12675e", font=("Segoe UI", 11, "bold"), spacing1=8)
-        self.view.tag_configure("body", lmargin1=6, lmargin2=6, spacing1=2, spacing3=3)
+        self.view.tag_configure("author", foreground="#284a97", font=("Segoe UI", 10, "bold"), spacing1=6)
+        self.view.tag_configure("user", foreground="#12675e", font=("Segoe UI", 10, "bold"), spacing1=6)
+        self.view.tag_configure("body", lmargin1=4, lmargin2=4, spacing3=2)
 
         activity = ttk.LabelFrame(panel, text=t("Activity & tokens", "진행 상황 및 토큰"), padding=6)
         activity.grid(row=2, column=0, sticky="ew", pady=(0, 8))
@@ -168,8 +169,9 @@ class ProjectChat:
             ("state", t("Status / last activity", "상태 / 마지막 활동"), 290),
             ("usage", t("Tokens in / out", "입력 / 출력 토큰"), 165),
         ):
-            self.table.heading(column, text=label)
-            self.table.column(column, width=width, minwidth=95)
+            anchor = "e" if column == "usage" else "w"
+            self.table.heading(column, text=label, anchor=anchor)
+            self.table.column(column, width=width, minwidth=95, anchor=anchor)
         scroll = ttk.Scrollbar(activity, command=self.table.yview)
         self.table.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
@@ -213,7 +215,7 @@ class ProjectChat:
         user = item["role"] == "You"
         role = self.t("You", "나") if user else self.names.get(item["role"], item["role"])
         self.view.insert("end", role + "\n", "user" if user else "author")
-        self.view.insert("end", item["text"] + "\n\n", "body")
+        self.view.insert("end", item["text"] + "\n", "body")
         self.view.configure(state="disabled")
         self.view.see("end")
 
@@ -224,8 +226,15 @@ class ProjectChat:
         self.save()
 
     def token_text(self, name):
+        return " / ".join(self.token_values(name))
+
+    def token_values(self, name):
         totals = self.usage.get(name, {})
-        return " / ".join(f"{totals[key]:,}" if key in totals else "—" for key in ("input_tokens", "output_tokens"))
+        return tuple(f"{totals[key]:,}" if key in totals else "—" for key in ("input_tokens", "output_tokens"))
+
+    def pause(self, paused):
+        self.paused = paused
+        self.send_button.state(["disabled" if paused or self.busy else "!disabled"])
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -239,7 +248,7 @@ class ProjectChat:
             self.input.delete("1.0", "end")
             self.show_usage()
             return
-        if self.busy or not request:
+        if self.busy or self.paused or not request:
             return
         if not self.coder and not self.reviewers:
             messagebox.showerror("Agent Council", self.t("Choose a coding agent or a reviewer in Settings.",
@@ -315,7 +324,7 @@ class ProjectChat:
                         self.table.set(name, "state", self.t("Skipped", "생략"))
                 self.busy = False
                 self.progress.stop()
-                self.send_button.state(["!disabled"])
+                self.pause(self.paused)
         now = time.monotonic()
         for name, (label, started, last_output, tool) in self.work.items():
             if last_output is None:

@@ -1,11 +1,13 @@
 """Agent Council desktop application."""
 import hashlib
+import base64
 from datetime import datetime
 import json
 import os
 from pathlib import Path
 import queue
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -16,7 +18,7 @@ from urllib.request import Request, urlopen
 from multi_ai import AGENTS, CODING_AGENTS, codex_rate_limits
 from project_chat import ProjectChat
 
-VERSION = "1.4.1"
+VERSION = "1.4.2"
 REPO = "jwjp/agent-council"
 ASSET = "AgentCouncil.exe"
 CONFIG = Path(os.getenv("LOCALAPPDATA", Path.home())) / "AgentCouncil" / "settings.json"
@@ -39,22 +41,70 @@ def check_update():
 def download_update(asset):
     if not getattr(sys, "frozen", False):
         raise ValueError("Run the packaged app to install updates.")
-    target = Path(sys.executable).with_name("AgentCouncil.update.exe")
+    folder = Path(sys.executable).parent
     digest = hashlib.sha256()
-    with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as file:
-        partial = Path(file.name)
-        try:
+    partial = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=folder, prefix=".agent-council-", suffix=".pending", delete=False) as file:
+            partial = Path(file.name)
             with urlopen(asset["browser_download_url"], timeout=30) as response:
                 while chunk := response.read(1024 * 1024):
                     digest.update(chunk)
                     file.write(chunk)
-            if "sha256:" + digest.hexdigest() != asset["digest"]:
-                raise ValueError("Update checksum mismatch.")
-            file.close()
-            partial.replace(target)
-        finally:
-            file.close()
+        if "sha256:" + digest.hexdigest() != asset["digest"]:
+            raise ValueError("Update checksum mismatch.")
+        return partial
+    except Exception:
+        if partial is not None:
             partial.unlink(missing_ok=True)
+        raise
+
+
+def restart_with_update(staged, executable, pid, failure_title):
+    """Wait outside the running app, replace its executable, and start it again."""
+    script = r"""
+$ErrorActionPreference = 'Stop'
+$target = $env:AGENT_COUNCIL_TARGET
+$staged = $env:AGENT_COUNCIL_STAGED
+$backup = $staged + '.backup'
+$replaced = $false
+try {
+    $old = Get-Process -Id ([int]$env:AGENT_COUNCIL_PID) -ErrorAction SilentlyContinue
+    if ($old -and !$old.WaitForExit(20000)) { throw 'The running app did not close.' }
+    for ($attempt = 0; $attempt -lt 40; $attempt++) {
+        try {
+            [IO.File]::Replace($staged, $target, $backup)
+            $replaced = $true
+            break
+        } catch [IO.IOException] {
+            if ($attempt -eq 39) { throw }
+            Start-Sleep -Milliseconds 250
+        }
+    }
+    $env:PYINSTALLER_RESET_ENVIRONMENT = '1'
+    Start-Process -FilePath $target -WorkingDirectory ([IO.Path]::GetDirectoryName($target))
+} catch {
+    $reason = $_.Exception.Message
+    if ($replaced -and [IO.File]::Exists($backup)) {
+        try { [IO.File]::Replace($backup, $target, $null) }
+        catch { $reason += [Environment]::NewLine + $_.Exception.Message }
+    }
+    Add-Type -AssemblyName System.Windows.Forms
+    [void][Windows.Forms.MessageBox]::Show($reason, $env:AGENT_COUNCIL_UPDATE_ERROR)
+    exit 1
+} finally {
+    [IO.File]::Delete($staged)
+    if ($replaced -and !$reason) { [IO.File]::Delete($backup) }
+}
+"""
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    env = dict(os.environ, AGENT_COUNCIL_TARGET=str(executable), AGENT_COUNCIL_STAGED=str(staged),
+               AGENT_COUNCIL_PID=str(pid), AGENT_COUNCIL_UPDATE_ERROR=failure_title)
+    return subprocess.Popen(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+        env=env, creationflags=subprocess.CREATE_NO_WINDOW,
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
 
 
 class App:
@@ -63,6 +113,7 @@ class App:
         self.events = queue.Queue()
         self.updating = False
         self.usage_dialog = None
+        self.popup = None
         self.usage_fetching = False
         try:
             config = json.loads(CONFIG.read_text(encoding="utf-8"))
@@ -95,7 +146,7 @@ class App:
         self.folder_label = ttk.Label(self.body)
         self.folder_label.pack(anchor="w", pady=(4, 0))
         self.chat = None
-        self.build_chat()
+        self.build_chat(config.get("draft", ""))
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.after(200, self.poll)
 
@@ -120,18 +171,31 @@ class App:
         CONFIG.write_text(json.dumps({
             "language": self.lang, "folder": str(self.folder), "coder": self.coder,
             "reviewers": self.reviewers, "full_access": self.full, "references": list(map(str, self.references)),
+            "draft": self.chat.input.get("1.0", "end-1c"),
         }, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def open_panel(self, title, modal=False):
+        if self.popup and self.popup.winfo_exists():
+            self.popup.destroy()
+        panel = self.popup = ttk.Frame(self.root, padding=14, relief="solid", borderwidth=1)
+        header = ttk.Frame(panel)
+        header.pack(fill="x", pady=(0, 10))
+        ttk.Label(header, text=title, font=("Segoe UI", 12, "bold")).pack(side="left")
+        ttk.Button(header, text=self.t("Close", "닫기"), command=panel.destroy).pack(side="right", padx=(12, 0))
+        panel.place(relx=0.5, rely=0.5, anchor="center")
+        panel.lift()
+        if modal:
+            panel.grab_set()
+            panel.focus_set()
+        return panel
 
     def settings(self):
         t = self.t
-        if self.chat.busy:
+        if self.chat.busy or self.updating:
             messagebox.showinfo("Agent Council", t("Wait for the current turn to finish.", "현재 작업이 끝날 때까지 기다려 주세요."), parent=self.root)
             return
-        dialog = tk.Toplevel(self.root)
-        dialog.title(t("Settings", "설정"))
-        dialog.transient(self.root)
-        dialog.grab_set()
-        panel = ttk.Frame(dialog, padding=16)
+        dialog = self.open_panel(t("Settings", "설정"), modal=True)
+        panel = ttk.Frame(dialog)
         panel.pack(fill="both", expand=True)
         folder = tk.StringVar(value=str(self.folder))
         language = tk.StringVar(value=self.lang)
@@ -141,7 +205,7 @@ class App:
         references = list(self.references)
         reviewers = {name: tk.BooleanVar(value=name in self.reviewers) for name in AGENTS}
         ttk.Label(panel, text=t("Project folder", "프로젝트 폴더")).grid(row=0, column=0, sticky="w")
-        ttk.Entry(panel, textvariable=folder, width=52).grid(row=1, column=0, sticky="ew", pady=(3, 12))
+        ttk.Entry(panel, textvariable=folder, width=38).grid(row=1, column=0, sticky="ew", pady=(3, 12))
 
         def browse():
             path = filedialog.askdirectory(parent=dialog, initialdir=folder.get())
@@ -235,37 +299,42 @@ class App:
             self.chat.input.focus_set()
 
         ttk.Button(panel, text=t("Save settings", "설정 저장"), command=apply).grid(row=8, columnspan=2, sticky="e", pady=(16, 0))
-        dialog.update_idletasks()
-        x = self.settings_button.winfo_rootx()
-        y = self.settings_button.winfo_rooty() + self.settings_button.winfo_height() + 4
-        x = min(x, dialog.winfo_screenwidth() - dialog.winfo_reqwidth())
-        y = min(y, dialog.winfo_screenheight() - dialog.winfo_reqheight() - 50)
-        dialog.geometry(f"+{max(0, x)}+{max(0, y)}")
 
     def show_usage(self):
         t = self.t
         if self.usage_dialog and self.usage_dialog.winfo_exists():
             self.usage_dialog.lift()
             return
-        dialog = self.usage_dialog = tk.Toplevel(self.root)
-        dialog.title(t("Usage", "사용량"))
-        dialog.transient(self.root)
-        panel = ttk.Frame(dialog, padding=14)
+        dialog = self.usage_dialog = self.open_panel(t("Usage", "사용량"))
+        panel = ttk.Frame(dialog)
         panel.pack(fill="both", expand=True)
-        ttk.Label(panel, text=t("Project token usage", "프로젝트 토큰 사용량"), font=("Segoe UI", 12, "bold")).pack(anchor="w")
-        table = self.usage_table = ttk.Treeview(panel, columns=("agent", "tokens"), show="headings", height=len(AGENTS))
-        table.heading("agent", text=t("Agent", "에이전트"))
-        table.heading("tokens", text=t("Input / output", "입력 / 출력"))
-        table.column("agent", width=155)
-        table.column("tokens", width=210)
+        ttk.Label(panel, text=t("Project token usage", "프로젝트 토큰 사용량"), font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        table = self.usage_table = ttk.Treeview(panel, columns=("agent", "input", "output"), show="headings", height=len(AGENTS))
+        for column, label, width, anchor in (
+            ("agent", t("Agent", "에이전트"), 150, "w"),
+            ("input", t("Input tokens", "입력 토큰"), 105, "e"),
+            ("output", t("Output tokens", "출력 토큰"), 105, "e"),
+        ):
+            table.heading(column, text=label, anchor=anchor)
+            table.column(column, width=width, anchor=anchor)
         for name in AGENTS:
-            table.insert("", "end", iid=name, values=(NAMES[name], self.chat.token_text(name)))
+            table.insert("", "end", iid=name, values=(NAMES[name], *self.chat.token_values(name)))
         table.pack(fill="x", pady=6)
         ttk.Label(panel, text=t("Saved from reported usage since 1.4.1.",
                                 "1.4.1부터 CLI가 보고한 사용량을 저장합니다.")).pack(anchor="w")
         ttk.Separator(panel).pack(fill="x", pady=10)
         ttk.Label(panel, text=t("Codex account limits", "Codex 계정 한도"), font=("Segoe UI", 12, "bold")).pack(anchor="w")
-        self.limit_label = ttk.Label(panel, wraplength=390, justify="left")
+        self.limit_table = ttk.Treeview(panel, columns=("window", "used", "remaining", "reset"), show="headings", height=2)
+        for column, label, width, anchor in (
+            ("window", t("Window", "한도"), 110, "w"),
+            ("used", t("Used", "사용"), 64, "e"),
+            ("remaining", t("Left", "남음"), 64, "e"),
+            ("reset", t("Resets", "초기화"), 122, "e"),
+        ):
+            self.limit_table.heading(column, text=label, anchor=anchor)
+            self.limit_table.column(column, width=width, anchor=anchor)
+        self.limit_table.pack(fill="x", pady=(5, 0))
+        self.limit_label = ttk.Label(panel, wraplength=360, justify="left")
         self.limit_label.pack(fill="x", pady=6)
         self.limit_button = ttk.Button(panel, text=t("Refresh Codex limits", "Codex 한도 새로고침"),
                                        command=self.refresh_limits)
@@ -283,7 +352,7 @@ class App:
     def show_limits(self, result):
         t = self.t
         limits = result.get("rateLimits") or {}
-        lines = []
+        self.limit_table.delete(*self.limit_table.get_children())
         for key in ("primary", "secondary"):
             window = limits.get(key) or {}
             if not isinstance(window.get("usedPercent"), (int, float)):
@@ -298,20 +367,31 @@ class App:
                 label = t(f"{minutes}-minute limit", f"{minutes}분 한도") if minutes else t("Usage limit", "사용 한도")
             used = window["usedPercent"]
             remaining = max(0, min(100, 100 - used))
-            line = t(f"{label}  ·  {used:g}% used, {remaining:g}% left", f"{label}  ·  {used:g}% 사용, {remaining:g}% 남음")
-            if window.get("resetsAt"):
-                reset = datetime.fromtimestamp(window["resetsAt"]).strftime("%m-%d %H:%M")
-                line += t(f"  ·  Resets {reset}", f"  ·  {reset} 초기화")
-            lines.append(line)
+            reset = datetime.fromtimestamp(window["resetsAt"]).strftime("%m-%d %H:%M") if window.get("resetsAt") else "—"
+            self.limit_table.insert("", "end", values=(label, f"{used:g}%", f"{remaining:g}%", reset))
         balance = (limits.get("credits") or {}).get("balance")
+        status = ""
         if balance is not None:
-            lines.append(t(f"Credits  ·  {balance}", f"크레딧  ·  {balance}"))
-        self.limit_label.configure(text="\n".join(lines) or t("This account returned no limit data.", "이 계정에서 한도 정보를 반환하지 않았습니다."))
+            status = t(f"Credits  ·  {balance}", f"크레딧  ·  {balance}")
+        elif not self.limit_table.get_children():
+            status = t("This account returned no limit data.", "이 계정에서 한도 정보를 반환하지 않았습니다.")
+        self.limit_label.configure(text=status)
 
     def update(self):
+        if self.chat.busy:
+            messagebox.showinfo("Agent Council", self.t("Wait for the current turn to finish.", "현재 작업이 끝날 때까지 기다려 주세요."), parent=self.root)
+            return
         self.updating = True
+        self.chat.pause(True)
+        self.update_button.configure(text=self.t("Checking…", "확인 중…"))
         self.update_button.state(["disabled"])
         self.background("available", check_update)
+
+    def finish_update(self):
+        self.updating = False
+        self.chat.pause(False)
+        self.update_button.configure(text=self.t("Check for updates", "업데이트 확인"))
+        self.update_button.state(["!disabled"])
 
     def background(self, kind, operation):
         def worker():
@@ -332,7 +412,7 @@ class App:
         t = self.t
         if self.usage_dialog and self.usage_dialog.winfo_exists():
             for name in AGENTS:
-                self.usage_table.set(name, "tokens", self.chat.token_text(name))
+                self.usage_table.item(name, values=(NAMES[name], *self.chat.token_values(name)))
         while not self.events.empty():
             kind, value = self.events.get()
             if kind in {"limits", "limits_error"}:
@@ -345,19 +425,30 @@ class App:
                         self.limit_label.configure(text=t("Codex limits unavailable: ", "Codex 한도 조회 실패: ") + value)
             elif kind == "available" and value:
                 version, asset = value
-                if messagebox.askyesno("Agent Council", t(f"Download {version}?", f"{version} 업데이트를 다운로드할까요?")):
+                if messagebox.askyesno("Agent Council", t(f"Install {version} and restart Agent Council?",
+                                                         f"{version}을 설치하고 Agent Council을 다시 시작할까요?"), parent=self.root):
+                    self.update_button.configure(text=t("Downloading…", "다운로드 중…"))
                     self.background("downloaded", lambda: download_update(asset))
                     continue
-                self.updating = False
-                self.update_button.state(["!disabled"])
+                self.finish_update()
+            elif kind == "downloaded":
+                try:
+                    self.save()
+                    restart_with_update(value, Path(sys.executable), os.getpid(),
+                                        t("Agent Council update failed", "Agent Council 업데이트 실패"))
+                except Exception as exc:
+                    value.unlink(missing_ok=True)
+                    self.finish_update()
+                    messagebox.showerror("Agent Council", str(exc), parent=self.root)
+                else:
+                    self.root.destroy()
+                    return
             else:
-                self.updating = False
-                self.update_button.state(["!disabled"])
-                messages = {"available": t("You are up to date.", "최신 버전입니다."),
-                            "downloaded": t("Update staged. Close the app and reopen it using Launch Agent Council.cmd.",
-                                            "다운로드가 완료됐습니다. 앱을 닫고 Launch Agent Council.cmd로 다시 실행하면 적용됩니다."),
-                            "update_error": value}
-                messagebox.showinfo("Agent Council", messages[kind])
+                self.finish_update()
+                if kind == "update_error":
+                    messagebox.showerror("Agent Council", value, parent=self.root)
+                else:
+                    messagebox.showinfo("Agent Council", t("You are up to date.", "최신 버전입니다."), parent=self.root)
         self.root.after(200, self.poll)
 
 
