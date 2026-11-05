@@ -20,7 +20,7 @@ from multi_ai import AGENTS, CODING_AGENTS, antigravity_rate_limits, codex_rate_
 from project_chat import ProjectChat
 from ui_theme import FONT, PALETTES, blend, install
 
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 REPO = "jwjp/agent-council"
 ASSET = "AgentCouncil.exe"
 CONFIG = Path(os.getenv("LOCALAPPDATA", Path.home())) / "AgentCouncil" / "settings.json"
@@ -203,12 +203,15 @@ class App:
             options = {}
             if isinstance(widget, tk.Text):
                 options = {key: muted(widget.cget(key)) for key in ("background", "foreground")}
-                for tag in ("author", "user", "request", "code"):
+                for tag in ("author", "user", "request", "md_quote", "md_code", "md_inline", "md_link", "md_rule"):
                     if tag in widget.tag_names():
                         tag_colors = {key: widget.tag_cget(tag, key) for key in ("background", "foreground")}
                         tag_colors = {key: value for key, value in tag_colors.items() if value}
                         saved.append((widget, tag, tag_colors))
                         widget.tag_configure(tag, **{key: muted(value) for key, value in tag_colors.items()})
+            elif isinstance(widget, (tk.Frame, tk.Label)):
+                keys = ("background", "foreground") if isinstance(widget, tk.Label) else ("background",)
+                options = {key: muted(widget.cget(key)) for key in keys}
             elif kind in {"TFrame", "TLabel", "TButton", "TLabelframe", "Treeview"}:
                 base = widget.cget("style") or kind
                 backdrop = f"Backdrop.{base}"

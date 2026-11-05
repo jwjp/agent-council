@@ -29,8 +29,11 @@ Click **Check for updates** and confirm installation. The app verifies GitHub's 
 
 ## Build from source
 
-Run `python app.py` using Python with Tkinter. To build the Windows executable, install PyInstaller and run:
+Use Python with Tkinter. Install Mistune and run the app from source, or install PyInstaller to build the executable:
 
 ```powershell
+python -m pip install mistune==3.4.0
+python app.py
+python -m pip install pyinstaller
 python -m PyInstaller --noconfirm --onefile --windowed --name AgentCouncil app.py
 ```

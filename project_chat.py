@@ -4,13 +4,16 @@ import json
 import queue
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
 from multi_ai import call, parallel
+from markdown_view import MarkdownView
 from ui_theme import FONT, TEXT_SIZE
+from windows_ime import install as install_ime
 
 
 def git_context(cwd):
@@ -164,10 +167,8 @@ class ProjectChat:
         self.view.pack(side="left", fill="both", expand=True)
         self.view.tag_configure("author", foreground=colors["muted"], font=(FONT, 9, "bold"), spacing1=10, spacing3=3)
         self.view.tag_configure("user", foreground=colors["accent"], font=(FONT, 9, "bold"), spacing1=10, spacing3=3, lmargin1=12)
-        self.view.tag_configure("body", spacing1=2, spacing3=4)
         self.view.tag_configure("request", background=colors["user"], lmargin1=12, lmargin2=12, rmargin=18, spacing1=5, spacing3=5)
-        self.view.tag_configure("heading", font=(FONT, 10, "bold"), spacing1=5, spacing3=3)
-        self.view.tag_configure("code", font=("Consolas", TEXT_SIZE), background=colors["subtle"], lmargin1=10, lmargin2=10)
+        self.markdown = MarkdownView(self.view, colors)
         self.empty = None
         if not self.messages:
             self.empty = ttk.Frame(transcript, style="Surface.TFrame")
@@ -210,13 +211,15 @@ class ProjectChat:
                   style="Surface.Muted.TLabel").pack(anchor="w", pady=(3, 0))
         composer = ttk.Frame(panel, style="Card.TFrame", padding=(9, 7))
         composer.grid(row=3, column=0, sticky="ew")
-        self.input = tk.Text(composer, height=3, wrap="word", padx=6, pady=4, font=(FONT, TEXT_SIZE),
+        input_font = "Malgun Gothic" if sys.platform == "win32" else FONT
+        self.input = tk.Text(composer, height=3, wrap="word", padx=6, pady=4, font=(input_font, TEXT_SIZE),
                              relief="flat", borderwidth=0, highlightthickness=0, background=colors["surface"],
                              foreground=colors["text"], insertbackground=colors["text"],
                              selectbackground=colors["selection"], selectforeground=colors["text"])
         self.input.pack(fill="x")
         self.input.bind("<Return>", lambda _: (self.send(), "break")[1])
         self.input.bind("<Shift-Return>", self.insert_newline)
+        install_ime(self.input)
         actions = ttk.Frame(composer, style="Surface.TFrame")
         actions.pack(fill="x", pady=(4, 0))
         self.send_button = ttk.Button(actions, text=t("Send  ↑", "보내기  ↑"), command=self.send, style="Primary.TButton")
@@ -249,16 +252,7 @@ class ProjectChat:
         if user:
             self.view.insert("end", item["text"] + "\n", "request")
         else:
-            in_code = False
-            for line in item["text"].split("\n"):
-                if line.lstrip().startswith("```"):
-                    in_code = not in_code
-                elif in_code:
-                    self.view.insert("end", line + "\n", "code")
-                elif line.startswith(("# ", "## ", "### ", "#### ")):
-                    self.view.insert("end", line.lstrip("#").lstrip() + "\n", "heading")
-                else:
-                    self.view.insert("end", line + "\n", "body")
+            self.markdown.render(item["text"])
         self.view.configure(state="disabled")
         if self.view.winfo_ismapped():
             self.view.see("end")
