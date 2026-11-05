@@ -4,8 +4,8 @@ from tkinter import ttk
 
 PALETTES = {
     "light": {
-        "window": "#f4f6f9", "surface": "#ffffff", "subtle": "#edf1f6", "line": "#dce3ed",
-        "text": "#172333", "muted": "#53647b", "accent": "#2a56b4", "hover": "#224898",
+        "window": "#fafafa", "surface": "#ffffff", "subtle": "#f1f3f6", "line": "#e3e6eb",
+        "text": "#242932", "muted": "#687181", "accent": "#355fd3", "hover": "#284eb6",
         "selection": "#dfeafe", "user": "#eaf1ff", "success": "#19694c", "error": "#a52b46",
         "shade": "#788698",
     },
@@ -36,6 +36,20 @@ def install(root, mode):
     style.configure("Note.TLabel", background=colors["subtle"], foreground=colors["muted"])
     style.configure("Card.TFrame", background=colors["surface"], borderwidth=1, relief="solid")
     style.configure("Status.TButton", padding=(4, 3), font=(FONT, 8), background=colors["surface"])
+    for name, padding in (("Ghost.TButton", (7, 3)), ("Icon.TButton", (6, 3)), ("Status.TButton", (3, 1))):
+        style.configure(name, background=colors["window"], padding=padding, relief="flat", borderwidth=0,
+                        bordercolor=colors["window"], lightcolor=colors["window"], darkcolor=colors["window"])
+        style.map(name, background=[("active", colors["subtle"])], relief=[("pressed", "flat"), ("!pressed", "flat")],
+                  foreground=[("disabled", colors["muted"]), ("!disabled", colors["muted"])])
+    style.configure("Status.TButton", font=(FONT, 8))
+    style.configure("Breadcrumb.TButton", background=colors["window"], borderwidth=0, padding=(7, 3),
+                    foreground=colors["muted"], anchor="w")
+    style.map("Breadcrumb.TButton", background=[("active", colors["subtle"])])
+    style.configure("AgentStatus.TButton", background=colors["subtle"], foreground=colors["muted"],
+                    borderwidth=0, padding=(7, 4), font=(FONT, 8), anchor="w")
+    style.map("AgentStatus.TButton", background=[("active", colors["selection"])])
+    for state, color in (("Active", "accent"), ("Done", "success"), ("Failed", "error")):
+        style.configure(f"{state}.AgentStatus.TButton", foreground=colors[color])
     style.layout("AgentChip.TRadiobutton", style.layout("TButton"))
     style.configure("AgentChip.TRadiobutton", padding=(7, 6), background=colors["surface"],
                     font=(FONT, 9, "bold"), anchor="w")

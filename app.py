@@ -20,7 +20,7 @@ from multi_ai import AGENTS, CODING_AGENTS, antigravity_rate_limits, codex_rate_
 from project_chat import ProjectChat
 from ui_theme import FONT, PALETTES, blend, install
 
-VERSION = "1.9.0"
+VERSION = "2.0.0"
 REPO = "jwjp/agent-council"
 ASSET = "AgentCouncil.exe"
 CONFIG = Path(os.getenv("LOCALAPPDATA", Path.home())) / "AgentCouncil" / "settings.json"
@@ -146,45 +146,77 @@ class App:
         if self.permissions not in {"restricted", "coder", "all"} or self.folder != folder.resolve():
             self.permissions = "restricted"
         root.title(f"Agent Council {VERSION}")
-        root.geometry("900x720")
+        root.geometry("1060x760")
         root.minsize(640, 500)
-        self.body = ttk.Frame(root, padding=(18, 12))
+        self.body = ttk.Frame(root, padding=(16, 8))
         self.body.pack(fill="both", expand=True)
         self.header = ttk.Frame(self.body)
         self.header.pack(fill="x")
-        ttk.Label(self.header, text="Agent Council", font=(FONT, 16, "bold")).pack(side="left")
-        ttk.Label(self.header, text=VERSION, style="Muted.TLabel").pack(side="left", padx=(7, 0))
-        self.settings_button = ttk.Button(self.header, command=self.settings)
-        self.settings_button.pack(side="left", padx=(10, 0))
-        self.update_button = ttk.Button(self.header, command=self.update)
-        self.update_button.pack(side="right", padx=8)
-        self.folder_label = ttk.Label(self.body, style="Muted.TLabel")
-        self.folder_label.pack(anchor="w", pady=(7, 8))
-        ttk.Separator(self.body).pack(fill="x")
+        self.menu_button = ttk.Button(self.header, text="☰", width=3, style="Icon.TButton", command=self.open_menu)
+        self.menu_button.pack(side="left", padx=(0, 5))
+        ttk.Label(self.header, text="Agent Council", font=(FONT, 13, "bold")).pack(side="left")
+        ttk.Label(self.header, text=VERSION, style="Muted.TLabel", font=(FONT, 8)).pack(side="left", padx=(7, 12))
+        self.folder_label = ttk.Button(self.header, style="Breadcrumb.TButton",
+                                       command=lambda: self.settings(workspace_tab=True), width=1)
+        self.folder_label.pack(side="left", fill="x", expand=True)
+        self.app_status = ttk.Label(self.header, style="Muted.TLabel", font=(FONT, 8))
+        self.app_status.pack(side="right")
+        self.app_menu = tk.Menu(root, tearoff=False)
+        ttk.Separator(self.body).pack(fill="x", pady=(7, 0))
         self.create_usage_bar()
         self.chat = None
         self.build_chat(config.get("draft", ""))
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.after(200, self.poll)
         root.after(500, self.refresh_limits)
+        root.bind("<Control-comma>", lambda _: self.settings())
 
     def t(self, english, korean):
         return korean if self.lang == "한국어" else english
 
+    def rebuild_menu(self):
+        menu = self.app_menu
+        menu.configure(background=self.colors["surface"], foreground=self.colors["text"],
+                       activebackground=self.colors["selection"], activeforeground=self.colors["text"],
+                       borderwidth=0, font=(FONT, 9))
+        menu.delete(0, "end")
+        menu.add_command(label=self.t("Settings", "설정"), accelerator="Ctrl+,",
+                         command=lambda: self.root.after_idle(self.settings))
+        menu.add_command(label=self.t("Usage", "사용량"), accelerator="/usage",
+                         command=lambda: self.root.after_idle(self.show_usage))
+        menu.add_separator()
+        menu.add_command(label=self.t("Check for updates", "업데이트 확인"),
+                         command=lambda: self.root.after_idle(self.update), state="disabled" if self.updating else "normal")
+        self.update_menu_index = menu.index("end")
+        menu.add_command(label=self.t("About Agent Council", "Agent Council 정보"),
+                         command=lambda: messagebox.showinfo("Agent Council", f"Agent Council {VERSION}", parent=self.root))
+        menu.add_separator()
+        menu.add_command(label=self.t("Quit", "종료"), command=lambda: self.root.after_idle(self.close))
+
+    def open_menu(self):
+        try:
+            self.app_menu.tk_popup(self.menu_button.winfo_rootx(),
+                                   self.menu_button.winfo_rooty() + self.menu_button.winfo_height() + 3)
+        finally:
+            self.app_menu.grab_release()
+
     def create_usage_bar(self):
-        bar = self.usage_bar = ttk.Frame(self.body, style="Surface.TFrame", padding=(5, 3))
-        bar.pack(side="bottom", fill="x", pady=(7, 0))
+        bar = self.usage_bar = ttk.Frame(self.body, padding=(0, 3))
+        bar.pack(side="bottom", fill="x", pady=(3, 0))
         self.usage_button = ttk.Button(bar, style="Status.TButton", command=self.show_usage)
         self.usage_button.grid(row=0, column=0, padx=(0, 3))
         self.usage_badges = {}
         self.usage_bars = {}
         for column, name in enumerate(AGENTS, 1):
-            cell = ttk.Frame(bar, style="Surface.TFrame")
+            cell = ttk.Frame(bar)
             cell.grid(row=0, column=column, sticky="nsew", padx=3)
             button = ttk.Button(cell, width=1, style="Status.TButton", command=lambda name=name: self.show_usage(name))
-            button.pack(fill="x")
-            meter = ttk.Progressbar(cell, maximum=100, length=1, style="Usage.Horizontal.TProgressbar")
-            meter.pack(fill="x", padx=4)
+            meter = tk.Canvas(cell, width=20, height=4, highlightthickness=0, borderwidth=0,
+                              background=self.colors["window"])
+            meter.create_line(2, 2, 18, 2, width=3, capstyle="round", fill=self.colors["line"], tags="track")
+            meter.create_line(2, 2, 2, 2, width=3, capstyle="round", fill=self.colors["accent"], tags="used")
+            meter.pack(side="left", padx=(0, 2))
+            button.pack(side="left", fill="x", expand=True)
             bar.columnconfigure(column, weight=1, uniform="usage")
             self.usage_badges[name] = button
             self.usage_bars[name] = meter
@@ -209,15 +241,18 @@ class App:
         short = self.usage_bar.winfo_width() < 770
         labels = ("Codex", "Claude", "AGY", "Grok", "Cursor", "Gemini")
         for name, title in zip(AGENTS, labels):
+            self.usage_bars[name].configure(background=self.colors["window"])
+            self.usage_bars[name].itemconfigure("track", fill=self.colors["line"])
             windows = self.limit_windows(name)
             reset = ""
             if windows:
                 _, used, resets = max(windows, key=lambda item: item[1])
                 amount = f"{used:.0f}%"
-                style = "UsageDanger.Horizontal.TProgressbar" if used >= 85 else "Usage.Horizontal.TProgressbar"
-                self.usage_bars[name].configure(value=used, style=style)
+                meter = self.usage_bars[name]
+                meter.coords("used", 2, 2, 2 + 16 * min(100, max(0, used)) / 100, 2)
+                meter.itemconfigure("used", fill=self.colors["error"] if used >= 85 else self.colors["accent"])
                 if not self.usage_bars[name].winfo_manager():
-                    self.usage_bars[name].pack(fill="x", padx=4)
+                    self.usage_bars[name].pack(side="left", before=self.usage_badges[name], padx=(0, 2))
                 if not short:
                     reset = self.reset_in(resets)
             else:
@@ -234,10 +269,13 @@ class App:
         self.usage_refresh.state(["disabled" if self.usage_fetching else "!disabled"])
 
     def build_chat(self, draft=""):
-        self.settings_button.configure(text=self.t("Settings", "설정"))
-        self.update_button.configure(text=self.t("Check for updates", "업데이트 확인"))
-        refs = self.t(f"{len(self.references)} reference folders", f"참고 폴더 {len(self.references)}개")
-        self.folder_label.configure(text=f"{self.t('Project', '프로젝트')} · {self.folder}   |   {refs}")
+        self.rebuild_menu()
+        refs = f"  +{len(self.references)}" if self.references else ""
+        self.folder_label.configure(text=f"▱  {self.folder.name or str(self.folder)}{refs}  ⌄")
+        scopes = {"restricted": self.t("Standard", "기본 권한"),
+                  "coder": self.t("Coder · full access", "코더 · 전체 액세스"),
+                  "all": self.t("All agents · full access", "모든 AI · 전체 액세스")}
+        self.app_status.configure(text=scopes[self.permissions])
         language = "Korean" if self.lang == "한국어" else "English"
         self.chat = ProjectChat(self.body, self.folder, self.coder, self.reviewers, self.references,
                                 language, CONFIG.parent, NAMES, self.permissions, self.show_usage, self.record_limits, self.colors)
@@ -274,7 +312,7 @@ class App:
                         tag_colors = {key: value for key, value in tag_colors.items() if value}
                         saved.append((widget, tag, tag_colors))
                         widget.tag_configure(tag, **{key: muted(value) for key, value in tag_colors.items()})
-            elif isinstance(widget, (tk.Frame, tk.Label)):
+            elif isinstance(widget, (tk.Frame, tk.Label, tk.Canvas)):
                 keys = ("background", "foreground") if isinstance(widget, tk.Label) else ("background",)
                 options = {key: muted(widget.cget(key)) for key in keys}
             elif kind in {"TFrame", "TLabel", "TButton", "TLabelframe", "Treeview"}:
@@ -323,27 +361,89 @@ class App:
         header.pack(fill="x", pady=(0, 10))
         ttk.Label(header, text=title, font=(FONT, 12, "bold")).pack(side="left")
         ttk.Button(header, text=self.t("Close", "닫기"), command=panel.destroy).pack(side="right", padx=(12, 0))
-        if footer:
-            panel.place(x=18, rely=1, y=-45, anchor="sw")
-        else:
-            panel.place(relx=0.5, rely=0.5, anchor="center")
+        viewport = ttk.Frame(panel)
+        viewport.pack(fill="both", expand=True)
+        canvas = tk.Canvas(viewport, background=self.colors["window"], highlightthickness=0, borderwidth=0)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll = ttk.Scrollbar(viewport, command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        content = panel.content = ttk.Frame(canvas)
+        window = canvas.create_window(0, 0, anchor="nw", window=content)
+        wheel_tag = f"PanelWheel{panel}"
+
+        def wheel(event):
+            if content.winfo_reqheight() > canvas.winfo_height():
+                canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
+                return "break"
+
+        panel.bind_class(wheel_tag, "<MouseWheel>", wheel)
+
+        def fit(_event=None):
+            if _event is not None and _event.widget not in {self.root, content}:
+                return
+            if not panel.winfo_exists():
+                return
+            available = max(180, self.root.winfo_height() - 32)
+            fixed = 30
+            for child in panel.pack_slaves():
+                if child != viewport:
+                    padding = child.pack_info().get("pady", 0)
+                    padding = sum(map(int, padding)) if isinstance(padding, tuple) else 2 * int(padding)
+                    fixed += child.winfo_reqheight() + padding
+            height = min(content.winfo_reqheight(), max(90, available - fixed))
+            overflow = content.winfo_reqheight() > height
+            if overflow:
+                scroll.pack(side="right", fill="y")
+            else:
+                scroll.pack_forget()
+            width = min(content.winfo_reqwidth(), self.root.winfo_width() - 62 - (scroll.winfo_reqwidth() if overflow else 0))
+            canvas.configure(width=width, height=height, scrollregion=(0, 0, width, content.winfo_reqheight()))
+            canvas.itemconfigure(window, width=width)
+            if footer:
+                y = self.usage_bar.winfo_rooty() - self.root.winfo_rooty() - 5
+                panel.place(relx=0, rely=0, x=16, y=max(fixed + height + 16, y), anchor="sw")
+            else:
+                panel.place(relx=0.5, rely=0.5, anchor="center")
+
+            def bind_wheel(widget):
+                if widget.winfo_class() not in {"Text", "Treeview", "Listbox", "TCombobox"}:
+                    tags = widget.bindtags()
+                    if wheel_tag not in tags:
+                        widget.bindtags((tags[0], wheel_tag, *tags[1:]))
+                for child in widget.winfo_children():
+                    bind_wheel(child)
+            bind_wheel(content)
+
+        content.bind("<Configure>", fit)
+        resize_binding = self.root.bind("<Configure>", fit, add="+")
+
+        def cleanup(event):
+            if event.widget == panel:
+                self.root.unbind("<Configure>", resize_binding)
+                panel.unbind_class(wheel_tag, "<MouseWheel>")
+
+        panel.bind("<Destroy>", cleanup, add="+")
+        panel.place(relx=0.5, rely=0.5, anchor="center")
+        panel.after_idle(fit)
         panel.lift()
         panel.grab_set()
         panel.focus_set()
         return panel
 
-    def settings(self):
+    def settings(self, workspace_tab=False):
         t = self.t
         if self.chat.busy or self.updating:
             messagebox.showinfo("Agent Council", t("Wait for the current turn to finish.", "현재 작업이 끝날 때까지 기다려 주세요."), parent=self.root)
             return
         dialog = self.open_panel(t("Settings", "설정"))
-        notebook = ttk.Notebook(dialog)
+        notebook = ttk.Notebook(dialog.content)
         notebook.pack(fill="both", expand=True)
         agents_page = ttk.Frame(notebook, padding=12)
         workspace = ttk.Frame(notebook, padding=12)
         notebook.add(agents_page, text=t("Agents", "에이전트"))
         notebook.add(workspace, text=t("Workspace", "워크스페이스"))
+        if workspace_tab:
+            notebook.select(workspace)
 
         folder = tk.StringVar(value=str(self.folder))
         language = tk.StringVar(value=self.lang)
@@ -514,7 +614,7 @@ class App:
             self.usage_dialog.lift()
             return
         dialog = self.usage_dialog = self.open_panel(t("Usage", "사용량"), footer=True)
-        self.usage_notebook = notebook = ttk.Notebook(dialog)
+        self.usage_notebook = notebook = ttk.Notebook(dialog.content)
         notebook.pack(fill="both", expand=True)
         self.usage_summary = summary_page = ttk.Frame(notebook, padding=(8, 8))
         self.usage_details = detail = ttk.Frame(notebook, padding=(8, 8))
@@ -536,14 +636,14 @@ class App:
             caption = ttk.Frame(card, style="Surface.TFrame")
             caption.pack(side="left", fill="x", expand=True)
             ttk.Label(caption, text=NAMES[name], style="Surface.TLabel", font=(FONT, 9, "bold")).pack(anchor="w")
-            metric = ttk.Label(caption, style="Surface.Muted.TLabel")
+            metric = ttk.Label(caption, style="Surface.Muted.TLabel", wraplength=260)
             metric.pack(anchor="w")
             ttk.Button(card, text="›", width=2, command=lambda name=name: show_provider(name),
                        style="Status.TButton").pack(side="right")
             self.summary_rows[name] = metric
         ttk.Label(summary_page, text=t("Percentages show used quota. Token totals end in t.",
                                        "%는 한도 사용률, t는 프로젝트 토큰 누계입니다."),
-                  style="Muted.TLabel", wraplength=450).pack(anchor="w", pady=(4, 0))
+                  style="Muted.TLabel", wraplength=300).pack(anchor="w", pady=(4, 0))
         ttk.Label(detail, text=t("Project tokens and account limits", "프로젝트 토큰 및 계정 한도"),
                   font=("Segoe UI", 10, "bold")).pack(anchor="w")
         self.usage_table = table = ttk.Treeview(detail, columns=("agent", "input", "output", "limits"),
@@ -592,6 +692,15 @@ class App:
                                        command=self.refresh_limits)
         self.limit_button.pack(side="right")
         notebook.select(detail if agent else summary_page)
+
+        def size_selected_page(_event=None):
+            page = self.root.nametowidget(notebook.select())
+            notebook.configure(width=page.winfo_reqwidth(), height=page.winfo_reqheight())
+
+        notebook.bind("<<NotebookTabChanged>>", size_selected_page, add="+")
+        summary_page.bind("<Configure>", size_selected_page, add="+")
+        detail.bind("<Configure>", size_selected_page, add="+")
+        notebook.after_idle(size_selected_page)
         self.render_usage()
 
     def refresh_limits(self):
@@ -725,15 +834,15 @@ class App:
             return
         self.updating = True
         self.chat.pause(True)
-        self.update_button.configure(text=self.t("Checking…", "확인 중…"))
-        self.update_button.state(["disabled"])
+        self.app_status.configure(text=self.t("Checking for updates…", "업데이트 확인 중…"))
+        self.app_menu.entryconfigure(self.update_menu_index, state="disabled")
         self.background("available", check_update)
 
     def finish_update(self):
         self.updating = False
         self.chat.pause(False)
-        self.update_button.configure(text=self.t("Check for updates", "업데이트 확인"))
-        self.update_button.state(["!disabled"])
+        self.app_status.configure(text=self.t("Ready", "준비"))
+        self.app_menu.entryconfigure(self.update_menu_index, state="normal")
 
     def background(self, kind, operation):
         def worker():
@@ -771,7 +880,7 @@ class App:
                 version, asset = value
                 if messagebox.askyesno("Agent Council", t(f"Install {version} and restart Agent Council?",
                                                          f"{version}을 설치하고 Agent Council을 다시 시작할까요?"), parent=self.root):
-                    self.update_button.configure(text=t("Downloading…", "다운로드 중…"))
+                    self.app_status.configure(text=t("Downloading update…", "업데이트 다운로드 중…"))
                     self.background("downloaded", lambda: download_update(asset))
                     continue
                 self.finish_update()

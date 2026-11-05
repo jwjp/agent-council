@@ -6,7 +6,7 @@ A Windows desktop chat for a coding agent, review agents, or both.
 
 1. Download `AgentCouncil-Windows-x64.zip` from [Releases](https://github.com/jwjp/agent-council/releases/latest).
 2. Extract both files to a writable folder and open `Launch Agent Council.cmd`. Python is bundled.
-3. In **Settings**, choose a project folder and the agents you want. Install and sign in to their CLIs and make sure they are on Windows PATH.
+3. Open **☰ → Settings** (or **Ctrl+,**) to choose a project folder and the agents you want. Clicking the project name in the header opens workspace settings. Install and sign in to their CLIs and make sure they are on Windows PATH.
 4. Type in the main chat. Enter sends. Shift+Enter inserts a new line. Choose **한국어** in Settings to switch the interface and model responses from English. **Appearance** switches between light and dark.
 
 ## Roles and permissions
@@ -18,17 +18,17 @@ A Windows desktop chat for a coding agent, review agents, or both.
 
 ## Progress and history
 
-The activity panel shows the current request and each agent's phase, elapsed time, and last CLI activity. **Split view** opens two resizable, independently scrollable reports for the current turn. Select which agent to show in each pane. **Activity** switches to a timestamped log of phases, tool events, and paced notes from supported CLI responses. Double-click an agent in the activity table to open its log. Recent notes and events for the latest request are saved with the project and remain available after completion. The final report appears in the right pane when ready and can be reopened from the toolbar. Use **Conversation** to return to the full timeline. A CLI can stay silent while it waits for its provider.
+The activity panel appears after the first request. It shows the current request and compact agent status buttons with phase and elapsed time. Click an agent to open its activity log, or expand **Details** for the full activity and token table. This preference is saved with the conversation. **Split view** opens two resizable, independently scrollable reports for the current turn. Select which agent to show in each pane. **Activity** switches to a timestamped log of phases, tool events, and paced notes from supported CLI responses. Double-click an agent in the activity table to open its log. Recent notes and events for the latest request are saved with the project and remain available after completion. The final report appears in the right pane when ready and can be reopened from the toolbar. Use **Conversation** to return to the full timeline. A CLI can stay silent while it waits for its provider.
 
 Input and output tokens reported by each CLI are saved per project from 1.4.1 onwards. Open **Usage** or type `/usage` to see all six agents. Codex and Antigravity account limits are read from their local CLIs. Claude Code limits appear when reported during a turn in the current app session. Grok and Cursor rows link to their usage dashboards, and Gemini CLI shows how to check with `/stats`.
 
-The bottom-left status strip shows the most-used reported account window as a used percentage and its reset countdown. Clicking an agent opens its details. Without account quota data it shows reported project token totals with a `t` suffix, or a dash when no data is available. The refresh control queries available local quota readers.
+The single-row bottom status strip shows the most-used reported account window as a used percentage and its reset countdown. Clicking **Usage** opens a compact bottom-left summary; clicking an agent opens its details. Without account quota data it shows reported project token totals with a `t` suffix, or a dash when no data is available. The refresh control queries available local quota readers. Settings and usage stay inside the app window and scroll when space is limited.
 
 The app keeps one local transcript per folder under `%LOCALAPPDATA%\AgentCouncil\chats`. The ten most recent messages, with excerpts for long messages, carry into each new request. Review prompts may include implementation reports and bounded Git diff and status excerpts. Prior council reports remain in project folders under `multi_ai_runs`.
 
 ## Updates
 
-Click **Check for updates** and confirm installation. The app verifies GitHub's SHA-256 digest, then closes, replaces the executable, and restarts automatically. When upgrading from 1.4.1 or earlier, use the old launcher's restart step once, or download the new ZIP.
+Click **☰ → Check for updates** and confirm installation. The app verifies GitHub's SHA-256 digest, then closes, replaces the executable, and restarts automatically. When upgrading from 1.4.1 or earlier, use the old launcher's restart step once, or download the new ZIP.
 
 ## Build from source
 

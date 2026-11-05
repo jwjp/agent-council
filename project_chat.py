@@ -184,6 +184,7 @@ class ProjectChat:
         self.busy = False
         self.paused = False
         self.work = {}
+        self.agent_phases = {}
         key = hashlib.sha256(str(cwd).casefold().encode()).hexdigest()
         self.path = state_root / "chats" / f"{key}.json"
         try:
@@ -193,6 +194,7 @@ class ProjectChat:
         self.messages = state.get("messages", [])
         self.usage = state.get("usage", {})
         self.feed = ActivityFeed(state.get("activity"))
+        self.activity_expanded = bool(state.get("activity_expanded", False))
         agents = ([coder] if coder else []) + reviewers
         historical = {item["role"] for item in self.messages}
         self.split_agents = list(dict.fromkeys(agents + [name for name in names if name in historical or names[name] in historical]
@@ -211,9 +213,9 @@ class ProjectChat:
         mode = names[coder] if coder else t("Review only", "검수 전용")
         toolbar = ttk.Frame(panel)
         toolbar.grid(row=0, column=0, sticky="ew")
-        self.split_button = ttk.Button(toolbar, command=self.toggle_split)
+        self.split_button = ttk.Button(toolbar, command=self.toggle_split, style="Ghost.TButton")
         self.split_button.pack(side="right")
-        self.report_button = ttk.Button(toolbar, text=names["council"], command=self.show_report)
+        self.report_button = ttk.Button(toolbar, text=names["council"], command=self.show_report, style="Ghost.TButton")
         self.report_button.pack(side="right", padx=(0, 6))
         latest_turn = next((i for i in range(len(self.messages) - 1, -1, -1)
                             if self.messages[i]["role"] == "You"), -1)
@@ -221,15 +223,14 @@ class ProjectChat:
                                   else "disabled"])
         if not self.split_agents:
             self.split_button.state(["disabled"])
-        ttk.Label(toolbar, text=mode + "  ·  " + t("Reviewers", "검수자") + "  " +
-                  (", ".join(names[n] for n in reviewers) or t("None", "없음")),
+        ttk.Label(toolbar, text=mode + "  ·  " + t(f"{len(reviewers)} reviewers", f"검수 {len(reviewers)}"),
                   style="Muted.TLabel", font=(FONT, TEXT_SIZE, "bold")).pack(side="left", padx=2)
-        transcript = self.transcript = ttk.Frame(panel, style="Card.TFrame", padding=1)
+        transcript = self.transcript = ttk.Frame(panel, style="Surface.TFrame", padding=1)
         transcript.grid(row=1, column=0, sticky="nsew", pady=(8, 10))
         self.view = tk.Text(transcript, height=1, wrap="word", padx=18, pady=12, state="disabled", background=colors["surface"],
                             foreground=colors["text"], selectbackground=colors["selection"], selectforeground=colors["text"],
                             font=(FONT, 10), relief="flat", borderwidth=0, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(transcript, command=self.view.yview)
+        scrollbar = self.transcript_scroll = ttk.Scrollbar(transcript, command=self.view.yview)
         self.view.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
         self.view.pack(side="left", fill="both", expand=True)
@@ -240,6 +241,8 @@ class ProjectChat:
         self.empty = None
         if not self.messages:
             self.empty = ttk.Frame(transcript, style="Surface.TFrame")
+            tk.Label(self.empty, text="AC", font=(FONT, 15, "bold"), padx=12, pady=9,
+                     background=colors["selection"], foreground=colors["accent"]).pack(pady=(0, 12))
             ttk.Label(self.empty, text=t("What are we working on?", "어떤 작업을 시작할까요?"),
                       style="Surface.TLabel", font=(FONT, 16, "bold")).pack(pady=(0, 6))
             ttk.Label(self.empty, text=t("Ask a question, request a change, or review this project.",
@@ -247,23 +250,33 @@ class ProjectChat:
                       style="Surface.Muted.TLabel").pack()
             self.empty.place(relx=0.5, rely=0.46, anchor="center")
 
-        activity = ttk.Frame(panel, style="Card.TFrame", padding=(10, 6))
+        activity = self.activity = ttk.Frame(panel, padding=(2, 2))
         activity.grid(row=2, column=0, sticky="ew", pady=(0, 8))
-        activity_header = ttk.Frame(activity, style="Surface.TFrame")
-        activity_header.pack(fill="x", pady=(0, 5))
-        ttk.Label(activity_header, text=t("Agent activity", "에이전트 진행 상황"), style="Surface.TLabel",
-                  font=(FONT, TEXT_SIZE, "bold")).pack(side="left")
-        self.turn_step = ttk.Label(activity_header, text=t("Ready for a request", "다음 요청 대기"),
-                                   style="Surface.Muted.TLabel")
+        activity_header = ttk.Frame(activity)
+        activity_header.pack(fill="x", pady=(0, 4))
+        ttk.Label(activity_header, text=t("Activity", "진행 상황"), font=(FONT, TEXT_SIZE, "bold")).pack(side="left")
+        self.detail_button = ttk.Button(activity_header, style="Ghost.TButton", command=self.toggle_details)
+        self.detail_button.pack(side="right", padx=(8, 0))
+        self.turn_step = ttk.Label(activity_header, text=t("Ready for a request", "다음 요청 대기"), style="Muted.TLabel")
         self.turn_step.pack(side="right")
-        ttk.Label(activity, text=t("Current request", "현재 질문"), style="Surface.Muted.TLabel").pack(anchor="w")
-        self.request_view = tk.Text(activity, height=2, width=1, wrap="word", padx=6, pady=3, state="disabled",
+        self.request_view = tk.Text(activity, height=1, width=1, wrap="word", padx=6, pady=3, state="disabled",
                                     background=colors["subtle"], foreground=colors["text"],
                                     font=(FONT, TEXT_SIZE), borderwidth=0, highlightthickness=0)
-        self.request_view.pack(fill="x", pady=(3, 6))
+        self.request_view.pack(fill="x", pady=(2, 4))
         latest = next((item["text"] for item in reversed(self.messages) if item["role"] == "You"), "")
         self.show_request(latest)
-        table_area = ttk.Frame(activity, style="Surface.TFrame")
+        chips = ttk.Frame(activity)
+        chips.pack(fill="x", pady=(0, 2))
+        self.agent_chips = {}
+        for index, name in enumerate(agents):
+            row, column = divmod(index, 3)
+            chips.columnconfigure(column, weight=1, uniform="status")
+            button = ttk.Button(chips, width=1, style="AgentStatus.TButton",
+                                command=lambda name=name: self.open_agent_log(name))
+            button.grid(row=row, column=column, sticky="ew", padx=(0, 4), pady=2)
+            self.agent_chips[name] = button
+        self.activity_details = ttk.Frame(activity)
+        table_area = ttk.Frame(self.activity_details)
         table_area.pack(fill="x")
         ttk.Style().configure("Activity.Treeview", rowheight=19)
         self.table = ttk.Treeview(table_area, columns=("agent", "state", "usage"), show="headings",
@@ -286,9 +299,9 @@ class ProjectChat:
         self.table.tag_configure("done", foreground=colors["success"])
         for name in agents:
             self.table.insert("", "end", iid=name, values=(names[name], t("Ready", "준비"), self.token_text(name)))
-        ttk.Label(activity, text=t("Double-click an agent for activity. Tokens are project totals.",
+        ttk.Label(self.activity_details, text=t("Double-click an agent for activity. Tokens are project totals.",
                                   "에이전트를 더블클릭하면 활동 기록이 열립니다. 토큰은 프로젝트 누계입니다."),
-                  style="Surface.Muted.TLabel").pack(anchor="w", pady=(3, 0))
+                  style="Muted.TLabel").pack(anchor="w", pady=(3, 0))
         composer = ttk.Frame(panel, style="Card.TFrame", padding=(9, 7))
         composer.grid(row=3, column=0, sticky="ew")
         input_font = "Malgun Gothic" if sys.platform == "win32" else FONT
@@ -314,6 +327,8 @@ class ProjectChat:
         if self.messages:
             self.view.after_idle(lambda: self.view.yview_moveto(1.0))
         self.show_layout()
+        self.set_details()
+        self.refresh_chips()
         self.input.focus_set()
         self.poll_id = self.panel.after(150, self.poll)
 
@@ -338,7 +353,7 @@ class ProjectChat:
         self.split_button.configure(text=self.t("Conversation", "대화 보기") if self.split_enabled else
                                     self.t("Split view", "분할 보기") if len(self.split_agents) > 1 else
                                     self.t("Agent view", "에이전트 보기"))
-        if self.split_enabled:
+        if self.split_enabled and self.messages:
             self.transcript.grid_remove()
             if self.split is None:
                 self.split = SplitViewer(self.content, self.split_agents, self.messages, self.names,
@@ -349,7 +364,34 @@ class ProjectChat:
             if self.split:
                 self.split.grid_remove()
             self.transcript.grid()
+        if self.messages:
+            self.activity.grid()
+            self.transcript_scroll.pack(side="right", fill="y", before=self.view)
+            self.split_button.pack(side="right")
+            self.report_button.pack(side="right", padx=(0, 6))
+        else:
+            self.activity.grid_remove()
+            self.transcript_scroll.pack_forget()
+            self.split_button.pack_forget()
+            self.report_button.pack_forget()
         self.fit_content()
+
+    def set_details(self):
+        self.detail_button.configure(text=self.t("Less  ▴", "접기  ▴") if self.activity_expanded else
+                                      self.t("Details  ▾", "상세  ▾"))
+        self.request_view.configure(height=2 if self.activity_expanded else 1)
+        if self.activity_expanded:
+            self.activity_details.pack(fill="x", pady=(5, 0))
+        else:
+            self.activity_details.pack_forget()
+
+    def toggle_details(self):
+        self.activity_expanded = not self.activity_expanded
+        self.set_details()
+        top = self.panel.winfo_toplevel()
+        top.update_idletasks()
+        top.minsize(640, max(500, self.panel.master.winfo_reqheight()))
+        self.save()
 
     def refresh_split(self):
         if self.split_enabled and self.split:
@@ -364,7 +406,9 @@ class ProjectChat:
             self.split.show_agent(min(1, len(self.split.panes) - 1), "council", show_log=False)
 
     def open_agent_activity(self, event):
-        name = self.table.identify_row(event.y)
+        self.open_agent_log(self.table.identify_row(event.y))
+
+    def open_agent_log(self, name):
         if name not in self.split_agents:
             return
         if not self.split_enabled:
@@ -421,7 +465,12 @@ class ProjectChat:
             self.show_request(text)
             self.report_button.state(["disabled"])
         self.render(item)
-        if self.split:
+        if len(self.messages) == 1:
+            self.show_layout()
+            top = self.panel.winfo_toplevel()
+            top.update_idletasks()
+            top.minsize(640, max(500, self.panel.master.winfo_reqheight()))
+        elif self.split:
             self.split.append(item)
         if role == "council":
             self.report_button.state(["!disabled"])
@@ -444,7 +493,7 @@ class ProjectChat:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temp = self.path.with_suffix(".tmp")
         temp.write_text(json.dumps({"messages": self.messages, "usage": self.usage, "split_view": self.split_enabled,
-                                    "activity": self.feed.events},
+                                    "activity": self.feed.events, "activity_expanded": self.activity_expanded},
                                    ensure_ascii=False), encoding="utf-8")
         temp.replace(self.path)
 
@@ -466,6 +515,7 @@ class ProjectChat:
             return
         self.busy = True
         self.work.clear()
+        self.agent_phases.clear()
         self.feed = ActivityFeed()
         self.turn_step.configure(text=self.t("Getting everyone ready…", "작업을 준비하고 있어요…"))
         for name in self.table.get_children():
@@ -509,6 +559,7 @@ class ProjectChat:
             self.turn_step.configure(text=steps[phase])
         now = time.monotonic()
         for agent in ([name] if name else self.reviewers):
+            self.agent_phases[agent] = phase
             label = self.t(phase, translations[phase])
             self.feed.phase(agent, label, now)
             if phase in {"Done", "Reviewed", "Discussed", "Failed"}:
@@ -577,7 +628,29 @@ class ProjectChat:
                 detail += f" {int(now - last_output)}s " + self.t("ago", "전")
             self.table.set(name, "state", f"{label} · {int(now-started)}s · {detail}")
         self.refresh_split()
+        self.refresh_chips()
         self.poll_id = self.panel.after(150, self.poll)
+
+    def refresh_chips(self):
+        states = {
+            "Implementing": self.t("Working", "작업 중"),
+            "Reviewing": self.t("Reviewing", "검수 중"), "Discussing": self.t("Discussing", "회의 중"),
+            "Summarizing": self.t("Reporting", "보고서 정리"), "Done": self.t("Done", "완료"),
+            "Reviewed": self.t("Reviewed", "검수 완료"), "Discussed": self.t("Discussed", "회의 완료"),
+            "Failed": self.t("Failed", "실패"),
+        }
+        for name, button in self.agent_chips.items():
+            phase = self.agent_phases.get(name)
+            state = states.get(phase, self.t("Queued", "대기") if self.busy else self.t("Ready", "준비"))
+            if name in self.work:
+                state += f" · {int(time.monotonic()-self.work[name][1])}s"
+            label = f"●  {self.names[name]}  ·  {state}"
+            style = ("Active." if name in self.work else "Failed." if phase == "Failed" else
+                     "Done." if phase in {"Done", "Reviewed", "Discussed"} else "") + "AgentStatus.TButton"
+            if button.cget("style") != style:
+                button.configure(style=style)
+            if button.cget("text") != label:
+                button.configure(text=label)
 
     def close(self):
         self.panel.after_cancel(self.poll_id)
