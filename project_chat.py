@@ -121,10 +121,11 @@ def response_parts(text):
 
 
 class ProjectChat:
-    def __init__(self, parent, cwd, coder, reviewers, references, language, state_root, names, full, show_usage):
+    def __init__(self, parent, cwd, coder, reviewers, references, language, state_root, names, full, show_usage, on_limits):
         self.cwd, self.coder, self.reviewers, self.references = cwd, coder, reviewers, references
         self.language, self.names, self.full = language, names, full
         self.show_usage = show_usage
+        self.on_limits = on_limits
         self.events = queue.Queue()
         self.busy = False
         self.paused = False
@@ -314,6 +315,8 @@ class ProjectChat:
                         totals[key] = totals.get(key, 0) + count
                     self.table.set(name, "usage", self.token_text(name))
                     self.save()
+                elif event == "limits":
+                    self.on_limits(name, detail)
             else:
                 for role, text in value:
                     self.add(role, text)

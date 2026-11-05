@@ -20,6 +20,23 @@ TIMEOUT_SECONDS = 300
 MAX_TEXT = 2400
 
 
+def antigravity_rate_limits(cwd):
+    executable = shutil.which("agy")
+    if not executable:
+        raise RuntimeError("Antigravity CLI not found.")
+    result = subprocess.run(
+        [executable, "--output-format", "json", "-p", "/usage"], cwd=cwd,
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8",
+        errors="replace", timeout=25, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip()[-350:] or "Antigravity usage request failed.")
+    command = (json.loads(result.stdout).get("command") or {})
+    if command.get("name") != "usage":
+        raise RuntimeError("This Antigravity CLI did not return structured usage.")
+    return (command.get("data") or {}).get("groups", [])
+
+
 def codex_rate_limits(cwd):
     """Read account limits through the signed-in local Codex app server."""
     executable = shutil.which("codex")
@@ -169,6 +186,10 @@ def stream_call(name, args, prompt, cwd, activity):
             if not isinstance(event, dict):
                 continue
             kind = event.get("type") or event.get("event")
+            if name == "claude" and kind == "rate_limit_event":
+                info = event.get("rate_limit_info")
+                if isinstance(info, dict):
+                    activity(name, "limits", info)
             item = event.get("item") or {}
             detail = item.get("type", kind)
             if kind == "assistant":

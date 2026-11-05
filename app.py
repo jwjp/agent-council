@@ -14,15 +14,22 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from urllib.request import Request, urlopen
+import webbrowser
 
-from multi_ai import AGENTS, CODING_AGENTS, codex_rate_limits
+from multi_ai import AGENTS, CODING_AGENTS, antigravity_rate_limits, codex_rate_limits
 from project_chat import ProjectChat
 
-VERSION = "1.4.2"
+VERSION = "1.4.3"
 REPO = "jwjp/agent-council"
 ASSET = "AgentCouncil.exe"
 CONFIG = Path(os.getenv("LOCALAPPDATA", Path.home())) / "AgentCouncil" / "settings.json"
 NAMES = dict(zip(AGENTS, ("Codex", "Claude Code", "Antigravity", "Grok", "Cursor Agent", "Gemini CLI")))
+USAGE_LINKS = {
+    "claude": "https://claude.ai/settings/usage",
+    "grok": "https://grok.com/dashboard",
+    "agent": "https://cursor.com/dashboard/usage",
+    "gemini": "https://geminicli.com/docs/resources/quota-and-pricing/",
+}
 
 
 def check_update():
@@ -114,7 +121,9 @@ class App:
         self.updating = False
         self.usage_dialog = None
         self.popup = None
-        self.usage_fetching = False
+        self.usage_fetching = set()
+        self.account_limits = {}
+        self.limit_errors = {}
         try:
             config = json.loads(CONFIG.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -161,7 +170,7 @@ class App:
         self.folder_label.configure(text=f"{self.t('Project', '프로젝트')} · {self.folder}   |   {refs}")
         language = "Korean" if self.lang == "한국어" else "English"
         self.chat = ProjectChat(self.body, self.folder, self.coder, self.reviewers, self.references,
-                                language, CONFIG.parent, NAMES, self.full, self.show_usage)
+                                language, CONFIG.parent, NAMES, self.full, self.show_usage, self.record_limits)
         self.chat.input.insert("1.0", draft)
         self.root.update_idletasks()
         self.root.minsize(640, max(500, self.body.winfo_reqheight()))
@@ -174,19 +183,66 @@ class App:
             "draft": self.chat.input.get("1.0", "end-1c"),
         }, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def open_panel(self, title, modal=False):
+    def dim_background(self):
+        style = ttk.Style(self.root)
+        saved = []
+
+        def dim(widget):
+            kind = widget.winfo_class()
+            options = {}
+            if isinstance(widget, tk.Text):
+                options = {"background": "#dbe2eb", "foreground": "#5b6677"}
+                for tag in ("author", "user"):
+                    if tag in widget.tag_names():
+                        saved.append((widget, tag, widget.tag_cget(tag, "foreground")))
+                        widget.tag_configure(tag, foreground="#5b6677")
+            elif kind in {"TFrame", "TLabel", "TButton", "TLabelframe", "Treeview"}:
+                base = widget.cget("style") or kind
+                muted = f"Backdrop.{base}"
+                style.configure(muted, background="#d3dbe6", foreground="#5b6677", fieldbackground="#e0e6ee")
+                if kind == "Treeview":
+                    style.configure(muted, rowheight=style.lookup(base, "rowheight") or 22)
+                    style.configure(f"{muted}.Heading", foreground="#5b6677")
+                if kind == "TLabelframe":
+                    style.configure(f"{muted}.Label", background="#d3dbe6", foreground="#5b6677")
+                options = {"style": muted}
+                if kind == "TLabel":
+                    options["foreground"] = "#5b6677"
+            if options:
+                saved.append((widget, None, {key: widget.cget(key) for key in options}))
+                widget.configure(**options)
+            for child in widget.winfo_children():
+                dim(child)
+
+        dim(self.body)
+        return saved
+
+    def open_panel(self, title):
         if self.popup and self.popup.winfo_exists():
             self.popup.destroy()
         panel = self.popup = ttk.Frame(self.root, padding=14, relief="solid", borderwidth=1)
+        backdrop = self.dim_background()
+
+        def restore(event):
+            if event.widget != panel:
+                return
+            for widget, tag, options in backdrop:
+                if widget.winfo_exists():
+                    if tag:
+                        widget.tag_configure(tag, foreground=options)
+                    else:
+                        widget.configure(**options)
+
+        panel.bind("<Destroy>", restore, add="+")
+        panel.bind("<Escape>", lambda _: panel.destroy())
         header = ttk.Frame(panel)
         header.pack(fill="x", pady=(0, 10))
         ttk.Label(header, text=title, font=("Segoe UI", 12, "bold")).pack(side="left")
         ttk.Button(header, text=self.t("Close", "닫기"), command=panel.destroy).pack(side="right", padx=(12, 0))
         panel.place(relx=0.5, rely=0.5, anchor="center")
         panel.lift()
-        if modal:
-            panel.grab_set()
-            panel.focus_set()
+        panel.grab_set()
+        panel.focus_set()
         return panel
 
     def settings(self):
@@ -194,7 +250,7 @@ class App:
         if self.chat.busy or self.updating:
             messagebox.showinfo("Agent Council", t("Wait for the current turn to finish.", "현재 작업이 끝날 때까지 기다려 주세요."), parent=self.root)
             return
-        dialog = self.open_panel(t("Settings", "설정"), modal=True)
+        dialog = self.open_panel(t("Settings", "설정"))
         panel = ttk.Frame(dialog)
         panel.pack(fill="both", expand=True)
         folder = tk.StringVar(value=str(self.folder))
@@ -306,76 +362,167 @@ class App:
             self.usage_dialog.lift()
             return
         dialog = self.usage_dialog = self.open_panel(t("Usage", "사용량"))
-        panel = ttk.Frame(dialog)
-        panel.pack(fill="both", expand=True)
-        ttk.Label(panel, text=t("Project token usage", "프로젝트 토큰 사용량"), font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        table = self.usage_table = ttk.Treeview(panel, columns=("agent", "input", "output"), show="headings", height=len(AGENTS))
+        ttk.Label(dialog, text=t("Project tokens and account limits", "프로젝트 토큰 및 계정 한도"),
+                  font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        self.usage_table = table = ttk.Treeview(dialog, columns=("agent", "input", "output", "limits"),
+                                                show="headings", height=len(AGENTS), selectmode="browse")
         for column, label, width, anchor in (
-            ("agent", t("Agent", "에이전트"), 150, "w"),
-            ("input", t("Input tokens", "입력 토큰"), 105, "e"),
-            ("output", t("Output tokens", "출력 토큰"), 105, "e"),
+            ("agent", t("Agent", "에이전트"), 117, "w"),
+            ("input", t("Input tokens", "입력 토큰"), 85, "e"),
+            ("output", t("Output tokens", "출력 토큰"), 85, "e"),
+            ("limits", t("Account limit remaining", "계정 한도 잔여량"), 215, "w"),
         ):
             table.heading(column, text=label, anchor=anchor)
             table.column(column, width=width, anchor=anchor)
         for name in AGENTS:
-            table.insert("", "end", iid=name, values=(NAMES[name], *self.chat.token_values(name)))
-        table.pack(fill="x", pady=6)
-        ttk.Label(panel, text=t("Saved from reported usage since 1.4.1.",
-                                "1.4.1부터 CLI가 보고한 사용량을 저장합니다.")).pack(anchor="w")
-        ttk.Separator(panel).pack(fill="x", pady=10)
-        ttk.Label(panel, text=t("Codex account limits", "Codex 계정 한도"), font=("Segoe UI", 12, "bold")).pack(anchor="w")
-        self.limit_table = ttk.Treeview(panel, columns=("window", "used", "remaining", "reset"), show="headings", height=2)
+            table.insert("", "end", iid=name)
+        table.pack(fill="x", pady=(5, 3))
+        table.selection_set("codex")
+        table.bind("<<TreeviewSelect>>", lambda _: self.render_limit_detail())
+        ttk.Label(dialog, text=t("Select an agent for details. — means unavailable.",
+                                  "에이전트를 선택하면 상세 정보를 볼 수 있습니다. —는 조회할 수 없는 값입니다."),
+                  wraplength=500).pack(anchor="w")
+        ttk.Separator(dialog).pack(fill="x", pady=8)
+        self.limit_title = ttk.Label(dialog, font=("Segoe UI", 10, "bold"))
+        self.limit_title.pack(anchor="w")
+        section = ttk.Frame(dialog)
+        section.pack(fill="x", pady=(4, 0))
+        self.limit_table = ttk.Treeview(section, columns=("window", "used", "remaining", "reset"), show="headings", height=2)
         for column, label, width, anchor in (
-            ("window", t("Window", "한도"), 110, "w"),
-            ("used", t("Used", "사용"), 64, "e"),
-            ("remaining", t("Left", "남음"), 64, "e"),
-            ("reset", t("Resets", "초기화"), 122, "e"),
+            ("window", t("Window", "한도"), 235, "w"),
+            ("used", t("Used", "사용"), 65, "e"),
+            ("remaining", t("Left", "남음"), 65, "e"),
+            ("reset", t("Resets", "초기화"), 120, "e"),
         ):
             self.limit_table.heading(column, text=label, anchor=anchor)
             self.limit_table.column(column, width=width, anchor=anchor)
-        self.limit_table.pack(fill="x", pady=(5, 0))
-        self.limit_label = ttk.Label(panel, wraplength=360, justify="left")
-        self.limit_label.pack(fill="x", pady=6)
-        self.limit_button = ttk.Button(panel, text=t("Refresh Codex limits", "Codex 한도 새로고침"),
+        scroll = ttk.Scrollbar(section, command=self.limit_table.yview)
+        scroll.pack(side="right", fill="y")
+        self.limit_table.configure(yscrollcommand=scroll.set)
+        self.limit_table.pack(fill="x")
+        self.limit_label = ttk.Label(dialog, wraplength=500, justify="left")
+        self.limit_label.pack(fill="x", pady=5)
+        actions = ttk.Frame(dialog)
+        actions.pack(fill="x")
+        self.provider_button = ttk.Button(actions, command=self.open_usage_link)
+        self.provider_button.pack(side="left")
+        self.limit_button = ttk.Button(actions, text=t("Refresh available limits", "조회 가능한 한도 새로고침"),
                                        command=self.refresh_limits)
-        self.limit_button.pack(anchor="e")
+        self.limit_button.pack(side="right")
         self.refresh_limits()
+        self.render_usage()
 
     def refresh_limits(self):
-        self.limit_label.configure(text=self.t("Reading from the local Codex CLI…", "로컬 Codex CLI에서 확인 중…"))
-        self.limit_button.state(["disabled"])
-        if not self.usage_fetching:
-            self.usage_fetching = True
-            folder = self.folder
-            self.background("limits", lambda: codex_rate_limits(folder))
+        for name, lookup in (("codex", codex_rate_limits), ("agy", antigravity_rate_limits)):
+            if name not in self.usage_fetching:
+                self.usage_fetching.add(name)
+                self.limit_errors.pop(name, None)
+                self.background(f"limits:{name}", lambda lookup=lookup, folder=self.folder: lookup(folder))
+        self.render_usage()
 
-    def show_limits(self, result):
+    def record_limits(self, name, result):
+        self.account_limits[name] = result
+        self.render_usage()
+
+    def limit_windows(self, name):
         t = self.t
-        limits = result.get("rateLimits") or {}
-        self.limit_table.delete(*self.limit_table.get_children())
-        for key in ("primary", "secondary"):
-            window = limits.get(key) or {}
-            if not isinstance(window.get("usedPercent"), (int, float)):
-                continue
-            minutes = window.get("windowDurationMins")
-            hours = minutes // 60 if minutes else 0
-            if minutes == 10080:
-                label = t("Weekly limit", "주간 한도")
-            elif minutes and minutes % 60 == 0:
-                label = t(f"{hours}-hour limit", f"{hours}시간 한도")
+        result = self.account_limits.get(name)
+        windows = []
+        if name == "codex" and result:
+            limits = result.get("rateLimits") or {}
+            for key in ("primary", "secondary"):
+                window = limits.get(key) or {}
+                minutes = window.get("windowDurationMins")
+                if minutes == 10080:
+                    label = t("Weekly", "주간")
+                elif minutes and minutes % 60 == 0:
+                    label = t(f"{minutes // 60} hours", f"{minutes // 60}시간")
+                else:
+                    label = t(f"{minutes} min", f"{minutes}분") if minutes else t("Usage limit", "사용 한도")
+                windows.append((label, window.get("usedPercent"), window.get("resetsAt")))
+        elif name == "claude" and result:
+            reported = result.get("unifiedWindows") or {result.get("rateLimitType"): result}
+            labels = {"five_hour": t("5 hours", "5시간"), "seven_day": t("Weekly", "주간")}
+            for key, window in reported.items():
+                utilization = window.get("utilization")
+                reset = window.get("resetsAt")
+                if key and isinstance(utilization, (int, float)) and (not reset or reset > datetime.now().timestamp()):
+                    windows.append((labels.get(key, key), 100 * utilization, reset))
+        elif name == "agy" and result:
+            for group in result:
+                for bucket in group.get("buckets", []):
+                    remaining = bucket.get("remaining_fraction")
+                    if not isinstance(remaining, (int, float)):
+                        continue
+                    window = t("Weekly", "주간") if bucket.get("window") == "weekly" else bucket.get("name", "")
+                    windows.append((f"{group['name']} · {window}", 100 * (1 - remaining), bucket.get("reset_time")))
+        return [(label, min(100, max(0, used)), reset) for label, used, reset in windows if isinstance(used, (int, float))]
+
+    def render_usage(self):
+        if not self.usage_dialog or not self.usage_dialog.winfo_exists():
+            return
+        t = self.t
+        for name in AGENTS:
+            windows = self.limit_windows(name)
+            if name in self.usage_fetching:
+                summary = t("Checking…", "확인 중…")
+            elif windows:
+                summary = "  /  ".join(f"{100 - used:.0f}%" for _, used, _ in windows)
+            elif name == "claude":
+                summary = t("Awaiting CLI report", "CLI 보고 대기")
+            elif name in USAGE_LINKS:
+                summary = t("Check provider", "제공자에서 확인")
             else:
-                label = t(f"{minutes}-minute limit", f"{minutes}분 한도") if minutes else t("Usage limit", "사용 한도")
-            used = window["usedPercent"]
-            remaining = max(0, min(100, 100 - used))
-            reset = datetime.fromtimestamp(window["resetsAt"]).strftime("%m-%d %H:%M") if window.get("resetsAt") else "—"
-            self.limit_table.insert("", "end", values=(label, f"{used:g}%", f"{remaining:g}%", reset))
-        balance = (limits.get("credits") or {}).get("balance")
-        status = ""
-        if balance is not None:
-            status = t(f"Credits  ·  {balance}", f"크레딧  ·  {balance}")
-        elif not self.limit_table.get_children():
-            status = t("This account returned no limit data.", "이 계정에서 한도 정보를 반환하지 않았습니다.")
+                summary = "—"
+            self.usage_table.item(name, values=(NAMES[name], *self.chat.token_values(name), summary))
+        self.limit_button.state(["disabled" if self.usage_fetching else "!disabled"])
+        self.render_limit_detail()
+
+    def render_limit_detail(self):
+        selection = self.usage_table.selection()
+        if not selection:
+            return
+        name = selection[0]
+        t = self.t
+        self.limit_title.configure(text=NAMES[name])
+        self.limit_table.delete(*self.limit_table.get_children())
+        for label, used, reset in self.limit_windows(name):
+            try:
+                reset = (datetime.fromisoformat(reset.replace("Z", "+00:00")).astimezone()
+                         if isinstance(reset, str) else datetime.fromtimestamp(reset))
+                reset_text = reset.strftime("%m-%d %H:%M")
+            except (TypeError, ValueError, OSError, OverflowError):
+                reset_text = "—"
+            self.limit_table.insert("", "end", values=(label, f"{used:.0f}%", f"{100 - used:.0f}%", reset_text))
+        hints = {
+            "claude": t("Shows the last limit report from a Claude Code turn in this app. For current limits, see Claude settings.",
+                        "이 앱에서 Claude Code가 마지막으로 보고한 한도입니다. 현재 한도는 Claude 설정에서 확인하세요."),
+            "agy": t("Model groups share limits. To check in the CLI, use /usage.",
+                     "모델 그룹별로 한도를 공유합니다. CLI에서도 /usage로 확인할 수 있습니다."),
+            "grok": t("Open Usage in the Grok dashboard for your account limits.",
+                      "Grok 대시보드의 사용량 메뉴에서 계정 한도를 확인하세요."),
+            "agent": t("Open the Cursor usage dashboard for your account limits.",
+                       "Cursor 사용량 대시보드에서 계정 한도를 확인하세요."),
+            "gemini": t("Use /stats in Gemini CLI to view model usage and supported quotas.",
+                        "Gemini CLI에서 /stats로 모델 사용량과 제공되는 한도를 확인하세요."),
+        }
+        status = hints.get(name, "")
+        if name in self.usage_fetching:
+            status = t("Reading account limits…", "계정 한도 확인 중…")
+        elif name in self.limit_errors:
+            status = t("Could not read limits: ", "한도 조회 실패: ") + self.limit_errors[name]
+        elif name == "codex":
+            limits = (self.account_limits.get(name) or {}).get("rateLimits") or {}
+            balance = (limits.get("credits") or {}).get("balance")
+            status = t(f"Credits · {balance}", f"크레딧 · {balance}") if balance is not None else status
         self.limit_label.configure(text=status)
+        self.provider_button.configure(text=t("How to check", "확인 방법") if name == "gemini" else t("Open provider usage", "제공자 사용량 열기"))
+        self.provider_button.state(["!disabled" if name in USAGE_LINKS else "disabled"])
+
+    def open_usage_link(self):
+        selection = self.usage_table.selection()
+        if selection and selection[0] in USAGE_LINKS:
+            webbrowser.open(USAGE_LINKS[selection[0]])
 
     def update(self):
         if self.chat.busy:
@@ -398,7 +545,7 @@ class App:
             try:
                 self.events.put((kind, operation()))
             except Exception as exc:
-                self.events.put(("limits_error" if kind == "limits" else "update_error", str(exc)))
+                self.events.put((kind.replace("limits:", "limits_error:") if kind.startswith("limits:") else "update_error", str(exc)))
         threading.Thread(target=worker, daemon=True).start()
 
     def close(self):
@@ -412,17 +559,18 @@ class App:
         t = self.t
         if self.usage_dialog and self.usage_dialog.winfo_exists():
             for name in AGENTS:
-                self.usage_table.item(name, values=(NAMES[name], *self.chat.token_values(name)))
+                for column, count in zip(("input", "output"), self.chat.token_values(name)):
+                    self.usage_table.set(name, column, count)
         while not self.events.empty():
             kind, value = self.events.get()
-            if kind in {"limits", "limits_error"}:
-                self.usage_fetching = False
-                if self.usage_dialog and self.usage_dialog.winfo_exists():
-                    self.limit_button.state(["!disabled"])
-                    if kind == "limits":
-                        self.show_limits(value)
-                    else:
-                        self.limit_label.configure(text=t("Codex limits unavailable: ", "Codex 한도 조회 실패: ") + value)
+            if kind.startswith(("limits:", "limits_error:")):
+                event, name = kind.split(":", 1)
+                self.usage_fetching.discard(name)
+                if event == "limits":
+                    self.account_limits[name] = value
+                else:
+                    self.limit_errors[name] = value
+                self.render_usage()
             elif kind == "available" and value:
                 version, asset = value
                 if messagebox.askyesno("Agent Council", t(f"Install {version} and restart Agent Council?",

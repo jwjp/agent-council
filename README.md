@@ -19,7 +19,7 @@ A Windows desktop chat for a coding agent, review agents, or both.
 
 ## Progress and history
 
-The activity panel shows the active phase, elapsed time, and when CLI output was last received. A CLI can stay silent while it waits for its provider. Input and output tokens reported by each CLI are saved per project from 1.4.1 onwards. Open **Usage** or type `/usage` to see the totals and query account limit windows, resets, and credits through the local Codex CLI. Other providers' account limits are not shown.
+The activity panel shows the active phase, elapsed time, and when CLI output was last received. A CLI can stay silent while it waits for its provider. Input and output tokens reported by each CLI are saved per project from 1.4.1 onwards. Open **Usage** or type `/usage` to see all six agents. Codex and Antigravity account limits are read from their local CLIs. Claude Code limits appear when reported during a turn in the current app session. Grok and Cursor rows link to their usage dashboards, and Gemini CLI shows how to check with `/stats`.
 
 The app keeps one local transcript per folder under `%LOCALAPPDATA%\AgentCouncil\chats`. The ten most recent messages, with excerpts for long messages, carry into each new request. Review prompts may include implementation reports and bounded Git diff and status excerpts. Prior council reports remain in project folders under `multi_ai_runs`.
 
