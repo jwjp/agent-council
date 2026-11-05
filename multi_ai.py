@@ -15,7 +15,7 @@ import time
 
 
 AGENTS = ("codex", "claude", "agy", "grok", "agent", "gemini")
-CODING_AGENTS = ("claude", "codex")
+CODING_AGENTS = ("claude", "codex", "grok", "agy", "agent", "gemini")
 TIMEOUT_SECONDS = 300
 MAX_TEXT = 2400
 
@@ -105,23 +105,29 @@ def command(name: str, prompt: str, *, implement=False, full_access=False, revie
     if not executable:
         raise RuntimeError(f"CLI not found: {name}")
     if name == "codex":
-        if implement and full_access:
+        if full_access:
             return [executable, "exec", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check", "-"]
         return [executable, "exec", "--sandbox", "workspace-write" if implement else "read-only", "--skip-git-repo-check", "-"]
     if name == "claude":
+        if full_access:
+            return [executable, "--print", "--dangerously-skip-permissions"]
         if implement:
-            return [executable, "--print", *(
-                ["--dangerously-skip-permissions"] if full_access else ["--permission-mode", "acceptEdits"]
-            )]
+            return [executable, "--print", "--permission-mode", "acceptEdits"]
         if review:
             return [executable, "--print", "--permission-mode", "plan", "--tools=Read,Glob,Grep"]
         return [executable, "--print", "--tools="]
     if name == "agy":
-        return [executable, "--mode", "plan", "--print", prompt]
+        permissions = ["--dangerously-skip-permissions", "--mode", "auto"] if full_access else [
+            "--mode", "accept-edits" if implement else "plan",
+        ]
+        return [executable, *permissions, "--print", prompt]
     if name == "gemini":
-        return [executable, "--approval-mode", "plan", "--prompt", "Respond to the request above."]
+        mode = "yolo" if full_access else "auto_edit" if implement else "plan"
+        sandbox = ["--sandbox=false"] if full_access else []
+        return [executable, "--approval-mode", mode, *sandbox, "--prompt", "Respond to the request above."]
     if name == "grok":
-        return [executable, "--permission-mode", "plan", "--single", prompt]
+        mode = "bypassPermissions" if full_access else "acceptEdits" if implement else "plan"
+        return [executable, "--permission-mode", mode, "--single", prompt]
     launcher = [executable]
     if Path(executable).suffix.lower() == ".cmd":
         root = Path(executable).parent
@@ -130,7 +136,9 @@ def command(name: str, prompt: str, *, implement=False, full_access=False, revie
             if (version / "node.exe").is_file() and (version / "index.js").is_file():
                 launcher = [str(version / "node.exe"), str(version / "index.js")]
                 break
-    return [*launcher, "--print", "--mode", "ask", "--sandbox", "enabled", "--", prompt]
+    permissions = ["--yolo", "--sandbox", "disabled"] if full_access else ["--sandbox", "enabled"]
+    mode = ["--mode", "ask"] if not (implement or full_access) else []
+    return [*launcher, "--print", *mode, *permissions, "--", prompt]
 
 
 def call(name: str, prompt: str, cwd: Path, *, implement=False, full_access=False, review=False, activity=None) -> dict:
@@ -301,10 +309,11 @@ def stream_call(name, args, prompt, cwd, activity):
             "exit_code": process.returncode}
 
 
-def parallel(names, prompt, cwd, phase, emit, *, review=False, activity=None):
+def parallel(names, prompt, cwd, phase, emit, *, review=False, activity=None, full_access=False):
     emit(phase, "", names)
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(names)) as pool:
-        jobs = {pool.submit(call, name, prompt, cwd, review=review, activity=activity): name for name in names}
+        jobs = {pool.submit(call, name, prompt, cwd, review=review, activity=activity, full_access=full_access): name
+                for name in names}
         results = {}
         for job in concurrent.futures.as_completed(jobs):
             name = jobs[job]

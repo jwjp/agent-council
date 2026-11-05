@@ -20,11 +20,12 @@ from multi_ai import AGENTS, CODING_AGENTS, antigravity_rate_limits, codex_rate_
 from project_chat import ProjectChat
 from ui_theme import FONT, PALETTES, blend, install
 
-VERSION = "1.8.0"
+VERSION = "1.9.0"
 REPO = "jwjp/agent-council"
 ASSET = "AgentCouncil.exe"
 CONFIG = Path(os.getenv("LOCALAPPDATA", Path.home())) / "AgentCouncil" / "settings.json"
 NAMES = dict(zip(AGENTS, ("Codex", "Claude Code", "Antigravity", "Grok", "Cursor Agent", "Gemini CLI")))
+AGENT_BADGES = dict(zip(AGENTS, ("CX", "CL", "AG", "GK", "CU", "GM")))
 USAGE_LINKS = {
     "claude": "https://claude.ai/settings/usage",
     "grok": "https://grok.com/dashboard",
@@ -141,7 +142,9 @@ class App:
             self.coder = None
         self.reviewers = [name for name in AGENTS if name in config.get("reviewers", []) and name != self.coder]
         self.references = [Path(path) for path in config.get("references", [])]
-        self.full = bool(config.get("full_access") and self.coder and self.folder == folder.resolve())
+        self.permissions = config.get("permissions", "coder" if config.get("full_access") else "restricted")
+        if self.permissions not in {"restricted", "coder", "all"} or self.folder != folder.resolve():
+            self.permissions = "restricted"
         root.title(f"Agent Council {VERSION}")
         root.geometry("900x720")
         root.minsize(640, 500)
@@ -155,38 +158,100 @@ class App:
         self.settings_button.pack(side="left", padx=(10, 0))
         self.update_button = ttk.Button(self.header, command=self.update)
         self.update_button.pack(side="right", padx=8)
-        self.usage_button = ttk.Button(self.header, command=self.show_usage)
-        self.usage_button.pack(side="right")
         self.folder_label = ttk.Label(self.body, style="Muted.TLabel")
         self.folder_label.pack(anchor="w", pady=(7, 8))
         ttk.Separator(self.body).pack(fill="x")
+        self.create_usage_bar()
         self.chat = None
         self.build_chat(config.get("draft", ""))
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.after(200, self.poll)
+        root.after(500, self.refresh_limits)
 
     def t(self, english, korean):
         return korean if self.lang == "한국어" else english
 
+    def create_usage_bar(self):
+        bar = self.usage_bar = ttk.Frame(self.body, style="Surface.TFrame", padding=(5, 3))
+        bar.pack(side="bottom", fill="x", pady=(7, 0))
+        self.usage_button = ttk.Button(bar, style="Status.TButton", command=self.show_usage)
+        self.usage_button.grid(row=0, column=0, padx=(0, 3))
+        self.usage_badges = {}
+        self.usage_bars = {}
+        for column, name in enumerate(AGENTS, 1):
+            cell = ttk.Frame(bar, style="Surface.TFrame")
+            cell.grid(row=0, column=column, sticky="nsew", padx=3)
+            button = ttk.Button(cell, width=1, style="Status.TButton", command=lambda name=name: self.show_usage(name))
+            button.pack(fill="x")
+            meter = ttk.Progressbar(cell, maximum=100, length=1, style="Usage.Horizontal.TProgressbar")
+            meter.pack(fill="x", padx=4)
+            bar.columnconfigure(column, weight=1, uniform="usage")
+            self.usage_badges[name] = button
+            self.usage_bars[name] = meter
+        self.usage_refresh = ttk.Button(bar, text="↻", width=3, style="Status.TButton", command=self.refresh_limits)
+        self.usage_refresh.grid(row=0, column=len(AGENTS) + 1, padx=(3, 0))
+        bar.bind("<Configure>", lambda _: self.refresh_usage_bar())
+
+    @staticmethod
+    def reset_in(value):
+        try:
+            reset = datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() if isinstance(value, str) else value
+            seconds = max(0, int(reset - datetime.now().timestamp()))
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            return ""
+        if seconds >= 86400:
+            return f"{seconds // 86400}d {seconds % 86400 // 3600}h"
+        if seconds >= 3600:
+            return f"{seconds // 3600}h {seconds % 3600 // 60}m"
+        return f"{max(1, seconds // 60)}m"
+
+    def refresh_usage_bar(self):
+        short = self.usage_bar.winfo_width() < 770
+        labels = ("Codex", "Claude", "AGY", "Grok", "Cursor", "Gemini")
+        for name, title in zip(AGENTS, labels):
+            windows = self.limit_windows(name)
+            reset = ""
+            if windows:
+                _, used, resets = max(windows, key=lambda item: item[1])
+                amount = f"{used:.0f}%"
+                style = "UsageDanger.Horizontal.TProgressbar" if used >= 85 else "Usage.Horizontal.TProgressbar"
+                self.usage_bars[name].configure(value=used, style=style)
+                if not self.usage_bars[name].winfo_manager():
+                    self.usage_bars[name].pack(fill="x", padx=4)
+                if not short:
+                    reset = self.reset_in(resets)
+            else:
+                self.usage_bars[name].pack_forget()
+                totals = self.chat.usage.get(name, {}) if getattr(self, "chat", None) else {}
+                count = sum(totals.get(key, 0) for key in ("input_tokens", "output_tokens"))
+                amount = (f"{count / 1000:.1f}k" if count >= 1000 else str(count)) + "t" if totals else "—"
+            text = f"{AGENT_BADGES[name] if short else title}  {amount}" + (f" · {reset}" if reset else "")
+            if self.usage_badges[name].cget("text") != text:
+                self.usage_badges[name].configure(text=text)
+        label = self.t("Usage", "사용량")
+        if self.usage_button.cget("text") != label:
+            self.usage_button.configure(text=label)
+        self.usage_refresh.state(["disabled" if self.usage_fetching else "!disabled"])
+
     def build_chat(self, draft=""):
         self.settings_button.configure(text=self.t("Settings", "설정"))
         self.update_button.configure(text=self.t("Check for updates", "업데이트 확인"))
-        self.usage_button.configure(text=self.t("Usage", "사용량"))
         refs = self.t(f"{len(self.references)} reference folders", f"참고 폴더 {len(self.references)}개")
         self.folder_label.configure(text=f"{self.t('Project', '프로젝트')} · {self.folder}   |   {refs}")
         language = "Korean" if self.lang == "한국어" else "English"
         self.chat = ProjectChat(self.body, self.folder, self.coder, self.reviewers, self.references,
-                                language, CONFIG.parent, NAMES, self.full, self.show_usage, self.record_limits, self.colors)
+                                language, CONFIG.parent, NAMES, self.permissions, self.show_usage, self.record_limits, self.colors)
         self.chat.input.insert("1.0", draft)
         self.root.update_idletasks()
         self.root.minsize(640, max(500, self.body.winfo_reqheight()))
+        self.refresh_usage_bar()
 
     def save(self):
         CONFIG.parent.mkdir(parents=True, exist_ok=True)
         CONFIG.write_text(json.dumps({
             "language": self.lang, "folder": str(self.folder), "coder": self.coder,
             "appearance": self.appearance,
-            "reviewers": self.reviewers, "full_access": self.full, "references": list(map(str, self.references)),
+            "reviewers": self.reviewers, "permissions": self.permissions, "references": list(map(str, self.references)),
             "draft": self.chat.input.get("1.0", "end-1c"),
         }, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -236,7 +301,7 @@ class App:
         dim(self.body)
         return saved
 
-    def open_panel(self, title):
+    def open_panel(self, title, *, footer=False):
         if self.popup and self.popup.winfo_exists():
             self.popup.destroy()
         panel = self.popup = ttk.Frame(self.root, padding=14, relief="solid", borderwidth=1)
@@ -258,7 +323,10 @@ class App:
         header.pack(fill="x", pady=(0, 10))
         ttk.Label(header, text=title, font=(FONT, 12, "bold")).pack(side="left")
         ttk.Button(header, text=self.t("Close", "닫기"), command=panel.destroy).pack(side="right", padx=(12, 0))
-        panel.place(relx=0.5, rely=0.5, anchor="center")
+        if footer:
+            panel.place(x=18, rely=1, y=-45, anchor="sw")
+        else:
+            panel.place(relx=0.5, rely=0.5, anchor="center")
         panel.lift()
         panel.grab_set()
         panel.focus_set()
@@ -270,72 +338,118 @@ class App:
             messagebox.showinfo("Agent Council", t("Wait for the current turn to finish.", "현재 작업이 끝날 때까지 기다려 주세요."), parent=self.root)
             return
         dialog = self.open_panel(t("Settings", "설정"))
-        panel = ttk.Frame(dialog)
-        panel.pack(fill="both", expand=True)
+        notebook = ttk.Notebook(dialog)
+        notebook.pack(fill="both", expand=True)
+        agents_page = ttk.Frame(notebook, padding=12)
+        workspace = ttk.Frame(notebook, padding=12)
+        notebook.add(agents_page, text=t("Agents", "에이전트"))
+        notebook.add(workspace, text=t("Workspace", "워크스페이스"))
+
         folder = tk.StringVar(value=str(self.folder))
         language = tk.StringVar(value=self.lang)
         appearances = {t("Light", "밝게"): "light", t("Dark", "어둡게"): "dark"}
         appearance = tk.StringVar(value=next(label for label, mode in appearances.items() if mode == self.appearance))
-        no_coder = t("None (review only)", "없음 (검수 전용)")
-        coder = tk.StringVar(value=NAMES.get(self.coder, no_coder))
-        full = tk.BooleanVar(value=self.full)
+        coder = tk.StringVar(value=self.coder or "")
         references = list(self.references)
         reviewers = {name: tk.BooleanVar(value=name in self.reviewers) for name in AGENTS}
-        ttk.Label(panel, text=t("Project folder", "프로젝트 폴더")).grid(row=0, column=0, sticky="w")
-        ttk.Entry(panel, textvariable=folder, width=38).grid(row=1, column=0, sticky="ew", pady=(3, 12))
+        scopes = {
+            t("Standard permissions", "기본 권한"): "restricted",
+            t("Full access · coding agent only", "전체 액세스 · 코더만"): "coder",
+            t("Full access · all agents", "전체 액세스 · 모든 에이전트"): "all",
+        }
+        access = tk.StringVar(value=next(label for label, scope in scopes.items() if scope == self.permissions))
+        installed = {name: bool(shutil.which(name)) for name in AGENTS}
+
+        ttk.Label(agents_page, text=t("Default coding agent", "기본 코딩 에이전트"), font=(FONT, 11, "bold")).pack(anchor="w")
+        ttk.Label(agents_page, text=t("Handles the request and makes changes when asked.",
+                                      "요청을 수행하고, 변경이 필요한 경우 직접 수정합니다."),
+                  style="Muted.TLabel").pack(anchor="w", pady=(2, 7))
+        choices = ttk.Frame(agents_page)
+        choices.pack(fill="x")
+        for index, name in enumerate(CODING_AGENTS + ("",)):
+            label = f"{AGENT_BADGES[name]}  {NAMES[name]}" if name else t("Review only", "검수 전용")
+            row, column = divmod(index, 3)
+            choices.columnconfigure(column, weight=1, uniform="agent")
+            ttk.Radiobutton(choices, text=label, variable=coder, value=name,
+                            style="AgentChip.TRadiobutton").grid(row=row, column=column, sticky="ew", padx=(0, 4), pady=(0, 4))
+
+        review_header = ttk.Frame(agents_page)
+        review_header.pack(fill="x", pady=(12, 6))
+        ttk.Label(review_header, text=t("Selected reviewers", "선택한 검수 에이전트"),
+                  font=(FONT, 11, "bold")).pack(side="left")
+        count_label = ttk.Label(review_header, style="Muted.TLabel")
+        count_label.pack(side="right")
+        cards = ttk.Frame(agents_page)
+        cards.pack(fill="x")
+        controls = {}
+
+        def sync_reviewers(*_):
+            for name, (card, check, status) in controls.items():
+                is_coder = name == coder.get()
+                if is_coder:
+                    reviewers[name].set(False)
+                check.state(["disabled" if is_coder else "!disabled"])
+                selected = reviewers[name].get()
+                card.configure(style="Selected.Card.TFrame" if selected else "Card.TFrame")
+                check.configure(style="Selected.Agent.TCheckbutton" if selected else "Agent.TCheckbutton")
+                status.configure(style="Selected.TLabel" if selected else "Surface.Muted.TLabel",
+                                 text=t("Default agent", "기본 에이전트") if is_coder else
+                                 t("CLI detected", "CLI 감지됨") if installed[name] else t("CLI not found", "CLI 미감지"))
+            count = sum(var.get() for var in reviewers.values())
+            count_label.configure(text=t(f"{count} selected", f"{count}개 선택"))
+
+        for index, name in enumerate(AGENTS):
+            row, column = divmod(index, 3)
+            cards.columnconfigure(column, weight=1, uniform="review")
+            card = ttk.Frame(cards, style="Card.TFrame", padding=(7, 3))
+            card.grid(row=row, column=column, sticky="nsew", padx=(0, 4), pady=(0, 4))
+            check = ttk.Checkbutton(card, text=f"{AGENT_BADGES[name]}  {NAMES[name]}", variable=reviewers[name],
+                                    command=sync_reviewers, style="Agent.TCheckbutton")
+            check.pack(anchor="w")
+            status = ttk.Label(card, style="Surface.Muted.TLabel")
+            status.pack(anchor="w")
+            controls[name] = card, check, status
+
+        coder.trace_add("write", sync_reviewers)
+        sync_reviewers()
+        ttk.Separator(agents_page).pack(fill="x", pady=(9, 8))
+        permission_row = ttk.Frame(agents_page)
+        permission_row.pack(fill="x")
+        ttk.Label(permission_row, text=t("Permissions", "권한"), font=(FONT, 10, "bold")).pack(side="left")
+        ttk.Combobox(permission_row, textvariable=access, state="readonly", values=list(scopes), width=29).pack(side="right")
+        ttk.Label(agents_page, text=t("Full access skips CLI approvals for the selected scope.",
+                                      "전체 액세스는 선택한 범위에서 CLI 승인 확인을 건너뜁니다."),
+                  style="Muted.TLabel").pack(anchor="w", pady=(5, 0))
+
+        workspace.columnconfigure(0, weight=1)
+        ttk.Label(workspace, text=t("Project folder", "프로젝트 폴더"), font=(FONT, 10, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Entry(workspace, textvariable=folder, width=38).grid(row=1, column=0, sticky="ew", pady=(4, 12))
 
         def browse():
             path = filedialog.askdirectory(parent=dialog, initialdir=folder.get())
             if path:
                 folder.set(path)
 
-        ttk.Button(panel, text=t("Browse", "찾아보기"), command=browse).grid(row=1, column=1, padx=(8, 0), sticky="n")
-        roles = ttk.Frame(panel)
-        roles.grid(row=2, columnspan=2, sticky="ew")
-        ttk.Label(roles, text=t("Coding agent (optional)", "코딩 담당 AI (선택 사항)")).grid(row=0, column=0, sticky="w")
-        picker = ttk.Combobox(roles, textvariable=coder, state="readonly", values=[no_coder, *[NAMES[n] for n in CODING_AGENTS]])
-        picker.grid(row=1, column=0, sticky="w", padx=(0, 16), pady=3)
-        ttk.Label(roles, text=t("Language", "언어")).grid(row=0, column=1, sticky="w")
-        ttk.Combobox(roles, textvariable=language, state="readonly", values=("English", "한국어"), width=12).grid(row=1, column=1, sticky="w", pady=3)
-        ttk.Label(roles, text=t("Appearance", "화면 모드")).grid(row=0, column=2, sticky="w", padx=(12, 0))
-        ttk.Combobox(roles, textvariable=appearance, state="readonly", values=list(appearances), width=9).grid(
-            row=1, column=2, sticky="w", padx=(12, 0), pady=3)
-        ttk.Label(panel, text=t("Review agents (optional)", "검수 AI (선택 사항)")).grid(row=3, column=0, sticky="w", pady=(12, 3))
-        choices = ttk.Frame(panel)
-        choices.grid(row=4, columnspan=2, sticky="w")
-        checks = {}
-        for i, name in enumerate(AGENTS):
-            check = ttk.Checkbutton(choices, text=NAMES[name], variable=reviewers[name])
-            check.grid(row=i // 3, column=i % 3, sticky="w", padx=(0, 10))
-            checks[name] = check
-        full_check = ttk.Checkbutton(panel, text=t("Full execution access for the coding agent", "코딩 담당 AI에 전체 실행 권한 부여"),
-                                     variable=full)
-        full_check.grid(row=5, columnspan=2, sticky="w", pady=(10, 0))
-
-        def sync_reviewers(*_):
-            for name, check in checks.items():
-                is_coder = NAMES[name] == coder.get()
-                if is_coder:
-                    reviewers[name].set(False)
-                check.state(["disabled" if is_coder else "!disabled"])
-            full_check.state(["disabled" if coder.get() == no_coder else "!disabled"])
-            if coder.get() == no_coder:
-                full.set(False)
-
-        picker.bind("<<ComboboxSelected>>", sync_reviewers)
-        sync_reviewers()
-
-        ttk.Label(panel, text=t("Reference folders", "참고 폴더")).grid(row=6, columnspan=2, sticky="w", pady=(12, 3))
-        folder_list = tk.Listbox(panel, height=3, selectmode="extended", font=(FONT, 9),
+        ttk.Button(workspace, text=t("Browse", "찾아보기"), command=browse).grid(row=1, column=1, padx=(8, 0), sticky="n")
+        display = ttk.Frame(workspace)
+        display.grid(row=2, columnspan=2, sticky="w", pady=(0, 12))
+        ttk.Label(display, text=t("Language", "언어")).grid(row=0, column=0, sticky="w")
+        ttk.Label(display, text=t("Appearance", "화면 모드")).grid(row=0, column=1, sticky="w")
+        ttk.Combobox(display, textvariable=language, state="readonly", values=("English", "한국어"), width=13).grid(
+            row=1, column=0, sticky="w", padx=(0, 10), pady=4)
+        ttk.Combobox(display, textvariable=appearance, state="readonly", values=list(appearances), width=10).grid(
+            row=1, column=1, sticky="w", pady=4)
+        ttk.Label(workspace, text=t("Reference folders", "참고 폴더"), font=(FONT, 10, "bold")).grid(row=3, column=0, sticky="w")
+        folder_list = tk.Listbox(workspace, height=4, selectmode="extended", font=(FONT, 9),
                                  background=self.colors["surface"], foreground=self.colors["text"],
                                  selectbackground=self.colors["selection"], selectforeground=self.colors["text"],
                                  highlightbackground=self.colors["line"], highlightcolor=self.colors["accent"],
                                  highlightthickness=1, borderwidth=0)
-        folder_list.grid(row=7, column=0, sticky="ew")
+        folder_list.grid(row=4, column=0, sticky="ew", pady=(4, 0))
         for reference in references:
             folder_list.insert("end", str(reference))
-        reference_buttons = ttk.Frame(panel)
-        reference_buttons.grid(row=7, column=1, padx=(8, 0), sticky="n")
+        reference_buttons = ttk.Frame(workspace)
+        reference_buttons.grid(row=4, column=1, padx=(8, 0), sticky="n")
 
         def add_reference():
             path = filedialog.askdirectory(parent=dialog, initialdir=folder.get())
@@ -356,46 +470,83 @@ class App:
         def apply():
             path = Path(folder.get().strip()).expanduser()
             if not folder.get().strip() or not path.is_dir():
+                notebook.select(workspace)
                 messagebox.showerror("Agent Council", t("Choose an existing folder.", "기존 폴더를 선택하세요."), parent=dialog)
                 return
             path = path.resolve()
-            selected_coder = next((name for name in CODING_AGENTS if NAMES[name] == coder.get()), None)
+            selected_coder = coder.get() or None
             selected_reviewers = [name for name in AGENTS if reviewers[name].get() and name != selected_coder]
-            allow_full = bool(selected_coder and full.get())
-            if allow_full and (not self.full or selected_coder != self.coder or path != self.folder):
-                if not messagebox.askyesno(
-                    "Agent Council",
-                    t("Allow the coding agent to bypass CLI permission checks using your account's permissions?",
-                      "코딩 담당 AI가 현재 계정 권한으로 CLI 권한 확인을 건너뛰도록 허용할까요?"),
-                    parent=dialog,
-                ):
+            scope = scopes[access.get()]
+            if scope == "coder" and not selected_coder:
+                scope = "restricted"
+            changed = scope != self.permissions or path != self.folder or selected_coder != self.coder
+            changed = changed or (scope == "all" and selected_reviewers != self.reviewers)
+            if scope != "restricted" and changed:
+                message = (t("All selected agents can bypass CLI permission checks, including during review and conference. Continue?",
+                             "선택한 모든 에이전트가 검수·회의 중에도 CLI 권한 확인을 건너뛸 수 있습니다. 적용할까요?")
+                           if scope == "all" else
+                           t("Allow the coding agent to bypass CLI permission checks?",
+                             "코딩 담당 AI가 CLI 권한 확인을 건너뛰도록 허용할까요?"))
+                if not messagebox.askyesno("Agent Council", message, parent=dialog):
                     return
             draft = self.chat.input.get("1.0", "end-1c") if path == self.folder else ""
-            if self.usage_dialog and self.usage_dialog.winfo_exists():
-                self.usage_dialog.destroy()
             dialog.destroy()
             self.chat.close()
             self.folder, self.coder, self.reviewers, self.lang = path, selected_coder, selected_reviewers, language.get()
             self.references = [reference for reference in references if reference != path]
-            self.full = allow_full
+            self.permissions = scope
             self.appearance = appearances[appearance.get()]
             self.colors = install(self.root, self.appearance)
             self.build_chat(draft)
             self.save()
             self.chat.input.focus_set()
 
-        ttk.Button(panel, text=t("Save settings", "설정 저장"), command=apply, style="Primary.TButton").grid(
-            row=8, columnspan=2, sticky="e", pady=(14, 0))
+        ttk.Button(dialog, text=t("Save settings", "설정 저장"), command=apply, style="Primary.TButton").pack(
+            anchor="e", pady=(12, 0))
 
-    def show_usage(self):
+    def show_usage(self, agent=None):
         t = self.t
+        chosen = agent or "codex"
         if self.usage_dialog and self.usage_dialog.winfo_exists():
+            self.usage_table.selection_set(chosen)
+            self.render_limit_detail()
+            self.usage_notebook.select(self.usage_details if agent else self.usage_summary)
             self.usage_dialog.lift()
             return
-        dialog = self.usage_dialog = self.open_panel(t("Usage", "사용량"))
-        ttk.Label(dialog, text=t("Project tokens and account limits", "프로젝트 토큰 및 계정 한도"),
+        dialog = self.usage_dialog = self.open_panel(t("Usage", "사용량"), footer=True)
+        self.usage_notebook = notebook = ttk.Notebook(dialog)
+        notebook.pack(fill="both", expand=True)
+        self.usage_summary = summary_page = ttk.Frame(notebook, padding=(8, 8))
+        self.usage_details = detail = ttk.Frame(notebook, padding=(8, 8))
+        notebook.add(summary_page, text=t("Summary", "요약"))
+        notebook.add(detail, text=t("Details", "상세"))
+        self.summary_rows = {}
+
+        def show_provider(name):
+            self.usage_table.selection_set(name)
+            self.render_limit_detail()
+            notebook.select(detail)
+
+        ttk.Label(summary_page, text=t("Account usage", "계정 사용량"), font=(FONT, 10, "bold")).pack(anchor="w", pady=(0, 6))
+        for name in AGENTS:
+            card = ttk.Frame(summary_page, style="Card.TFrame", padding=(9, 5))
+            card.pack(fill="x", pady=(0, 4))
+            tk.Label(card, text=AGENT_BADGES[name], font=(FONT, 9, "bold"), padx=5, pady=4,
+                     background=self.colors["selection"], foreground=self.colors["accent"]).pack(side="left", padx=(0, 9))
+            caption = ttk.Frame(card, style="Surface.TFrame")
+            caption.pack(side="left", fill="x", expand=True)
+            ttk.Label(caption, text=NAMES[name], style="Surface.TLabel", font=(FONT, 9, "bold")).pack(anchor="w")
+            metric = ttk.Label(caption, style="Surface.Muted.TLabel")
+            metric.pack(anchor="w")
+            ttk.Button(card, text="›", width=2, command=lambda name=name: show_provider(name),
+                       style="Status.TButton").pack(side="right")
+            self.summary_rows[name] = metric
+        ttk.Label(summary_page, text=t("Percentages show used quota. Token totals end in t.",
+                                       "%는 한도 사용률, t는 프로젝트 토큰 누계입니다."),
+                  style="Muted.TLabel", wraplength=450).pack(anchor="w", pady=(4, 0))
+        ttk.Label(detail, text=t("Project tokens and account limits", "프로젝트 토큰 및 계정 한도"),
                   font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        self.usage_table = table = ttk.Treeview(dialog, columns=("agent", "input", "output", "limits"),
+        self.usage_table = table = ttk.Treeview(detail, columns=("agent", "input", "output", "limits"),
                                                 show="headings", height=len(AGENTS), selectmode="browse")
         for column, label, width, anchor in (
             ("agent", t("Agent", "에이전트"), 117, "w"),
@@ -408,15 +559,15 @@ class App:
         for name in AGENTS:
             table.insert("", "end", iid=name)
         table.pack(fill="x", pady=(5, 3))
-        table.selection_set("codex")
+        table.selection_set(chosen)
         table.bind("<<TreeviewSelect>>", lambda _: self.render_limit_detail())
-        ttk.Label(dialog, text=t("Select an agent for details. — means unavailable.",
+        ttk.Label(detail, text=t("Select an agent for details. — means unavailable.",
                                   "에이전트를 선택하면 상세 정보를 볼 수 있습니다. —는 조회할 수 없는 값입니다."),
                   wraplength=500).pack(anchor="w")
-        ttk.Separator(dialog).pack(fill="x", pady=8)
-        self.limit_title = ttk.Label(dialog, font=("Segoe UI", 10, "bold"))
+        ttk.Separator(detail).pack(fill="x", pady=8)
+        self.limit_title = ttk.Label(detail, font=("Segoe UI", 10, "bold"))
         self.limit_title.pack(anchor="w")
-        section = ttk.Frame(dialog)
+        section = ttk.Frame(detail)
         section.pack(fill="x", pady=(4, 0))
         self.limit_table = ttk.Treeview(section, columns=("window", "used", "remaining", "reset"), show="headings", height=2)
         for column, label, width, anchor in (
@@ -431,21 +582,21 @@ class App:
         scroll.pack(side="right", fill="y")
         self.limit_table.configure(yscrollcommand=scroll.set)
         self.limit_table.pack(fill="x")
-        self.limit_label = ttk.Label(dialog, wraplength=500, justify="left")
+        self.limit_label = ttk.Label(detail, wraplength=500, justify="left")
         self.limit_label.pack(fill="x", pady=5)
-        actions = ttk.Frame(dialog)
+        actions = ttk.Frame(detail)
         actions.pack(fill="x")
         self.provider_button = ttk.Button(actions, command=self.open_usage_link)
         self.provider_button.pack(side="left")
         self.limit_button = ttk.Button(actions, text=t("Refresh available limits", "조회 가능한 한도 새로고침"),
                                        command=self.refresh_limits)
         self.limit_button.pack(side="right")
-        self.refresh_limits()
+        notebook.select(detail if agent else summary_page)
         self.render_usage()
 
     def refresh_limits(self):
         for name, lookup in (("codex", codex_rate_limits), ("agy", antigravity_rate_limits)):
-            if name not in self.usage_fetching:
+            if name not in self.usage_fetching and shutil.which(name):
                 self.usage_fetching.add(name)
                 self.limit_errors.pop(name, None)
                 self.background(f"limits:{name}", lambda lookup=lookup, folder=self.folder: lookup(folder))
@@ -490,6 +641,7 @@ class App:
         return [(label, min(100, max(0, used)), reset) for label, used, reset in windows if isinstance(used, (int, float))]
 
     def render_usage(self):
+        self.refresh_usage_bar()
         if not self.usage_dialog or not self.usage_dialog.winfo_exists():
             return
         t = self.t
@@ -506,6 +658,18 @@ class App:
             else:
                 summary = "—"
             self.usage_table.item(name, values=(NAMES[name], *self.chat.token_values(name), summary))
+            windows = self.limit_windows(name)
+            if windows:
+                label, used, reset = max(windows, key=lambda item: item[1])
+                countdown = self.reset_in(reset)
+                compact = f"{used:.0f}% " + t("used", "사용") + f" · {label}"
+                if countdown:
+                    compact += " · " + t(f"resets in {countdown}", f"{countdown} 후 초기화")
+            else:
+                totals = self.chat.usage.get(name, {})
+                count = sum(totals.get(key, 0) for key in ("input_tokens", "output_tokens"))
+                compact = f"{count:,}t · " + t("project total", "프로젝트 누계") if totals else summary
+            self.summary_rows[name].configure(text=compact)
         self.limit_button.state(["disabled" if self.usage_fetching else "!disabled"])
         self.render_limit_detail()
 
@@ -588,6 +752,7 @@ class App:
 
     def poll(self):
         t = self.t
+        self.refresh_usage_bar()
         if self.usage_dialog and self.usage_dialog.winfo_exists():
             for name in AGENTS:
                 for column, count in zip(("input", "output"), self.chat.token_values(name)):

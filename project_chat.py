@@ -40,7 +40,7 @@ def git_context(cwd):
         return ""
 
 
-def project_turn(cwd, messages, request, full_access, coder, reviewers, references, language, emit, activity, respond):
+def project_turn(cwd, messages, request, permissions, coder, reviewers, references, language, emit, activity, respond):
     history = "\n\n".join(f"{item['role']}: {item['text'][:3200]}" for item in messages[-10:])
     context = (
         f"Respond in {language}. The working directory is the selected project. "
@@ -64,7 +64,8 @@ def project_turn(cwd, messages, request, full_access, coder, reviewers, referenc
             emit(complete if result["ok"] else "Failed", name)
             respond(name, result["text"] if result["ok"] else result["error"] or "No response.", stage)
 
-        return parallel(agents, prompt, cwd, 2, on_result, review=True, activity=activity)
+        return parallel(agents, prompt, cwd, 2, on_result, review=True, activity=activity,
+                        full_access=permissions == "all")
 
     coder_result = None
     report = ""
@@ -76,7 +77,7 @@ def project_turn(cwd, messages, request, full_access, coder, reviewers, referenc
             "For requests that explicitly ask for changes, carry out the requested work and relevant checks. "
             "Preserve unrelated changes. Start with ANSWER, QUESTION, or IMPLEMENTED on its own line. "
             "Report changed paths, verified checks, and any blocked commands.",
-            cwd, implement=True, full_access=full_access, activity=activity,
+            cwd, implement=True, full_access=permissions in {"coder", "all"}, activity=activity,
         )
         if coder_result["ok"]:
             emit("Done", coder)
@@ -149,7 +150,7 @@ def project_turn(cwd, messages, request, full_access, coder, reviewers, referenc
         f"<independent_reviews>{initial}</independent_reviews>\n"
         f"<conference>{opinions(discussion, 950)}</conference>\n"
         f"<missing_responses>{', '.join(missing) or 'None'}</missing_responses>",
-        cwd, review=True, activity=activity,
+        cwd, review=True, activity=activity, full_access=permissions == "all",
     )
     emit("Done" if final["ok"] else "Failed", chair)
     if final["ok"]:
@@ -172,10 +173,10 @@ def response_parts(text):
 
 
 class ProjectChat:
-    def __init__(self, parent, cwd, coder, reviewers, references, language, state_root, names, full, show_usage, on_limits, colors):
+    def __init__(self, parent, cwd, coder, reviewers, references, language, state_root, names, permissions, show_usage, on_limits, colors):
         names = {**names, "council": "최종 보고서" if language == "Korean" else "Council report"}
         self.cwd, self.coder, self.reviewers, self.references = cwd, coder, reviewers, references
-        self.language, self.names, self.full = language, names, full
+        self.language, self.names, self.permissions = language, names, permissions
         self.show_usage = show_usage
         self.on_limits = on_limits
         self.colors = colors
@@ -480,7 +481,7 @@ class ProjectChat:
         def worker():
             try:
                 project_turn(
-                    self.cwd, history, request, self.full, self.coder, self.reviewers, self.references, self.language,
+                    self.cwd, history, request, self.permissions, self.coder, self.reviewers, self.references, self.language,
                     lambda *event: self.events.put(("phase", event)),
                     lambda *event: self.events.put(("activity", event)),
                     lambda *event: self.events.put(("response", event)),

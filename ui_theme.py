@@ -35,6 +35,25 @@ def install(root, mode):
     style.configure("Note.TFrame", background=colors["subtle"])
     style.configure("Note.TLabel", background=colors["subtle"], foreground=colors["muted"])
     style.configure("Card.TFrame", background=colors["surface"], borderwidth=1, relief="solid")
+    style.configure("Status.TButton", padding=(4, 3), font=(FONT, 8), background=colors["surface"])
+    style.layout("AgentChip.TRadiobutton", style.layout("TButton"))
+    style.configure("AgentChip.TRadiobutton", padding=(7, 6), background=colors["surface"],
+                    font=(FONT, 9, "bold"), anchor="w")
+    style.map("AgentChip.TRadiobutton", background=[("selected", colors["selection"]), ("active", colors["subtle"])],
+              foreground=[("selected", colors["accent"])], bordercolor=[("selected", colors["accent"])])
+    style.configure("Agent.TCheckbutton", background=colors["surface"], padding=(0, 3), font=(FONT, 9, "bold"))
+    style.map("Agent.TCheckbutton", background=[("active", colors["subtle"])],
+              foreground=[("selected", colors["accent"]), ("disabled", colors["muted"])])
+    style.configure("Selected.Card.TFrame", background=colors["selection"], bordercolor=colors["accent"],
+                    lightcolor=colors["accent"], darkcolor=colors["accent"], borderwidth=1, relief="solid")
+    style.configure("Selected.Agent.TCheckbutton", background=colors["selection"], foreground=colors["accent"],
+                    padding=(0, 3), font=(FONT, 9, "bold"))
+    style.map("Selected.Agent.TCheckbutton", background=[("active", colors["selection"])])
+    style.configure("Selected.TLabel", background=colors["selection"], foreground=colors["muted"])
+    style.configure("TNotebook", background=colors["window"], borderwidth=0)
+    style.configure("TNotebook.Tab", background=colors["subtle"], padding=(13, 7))
+    style.map("TNotebook.Tab", background=[("selected", colors["surface"])],
+              foreground=[("selected", colors["accent"])])
     style.configure("TButton", background=colors["subtle"], padding=(10, 5), borderwidth=1)
     style.map("TButton", background=[("active", colors["selection"])],
               foreground=[("disabled", colors["muted"])])
@@ -62,6 +81,10 @@ def install(root, mode):
     style.configure("TSeparator", background=colors["line"])
     style.configure("Horizontal.TProgressbar", background=colors["accent"], troughcolor=colors["subtle"],
                     lightcolor=colors["accent"], darkcolor=colors["accent"], borderwidth=0, thickness=3)
+    style.configure("Usage.Horizontal.TProgressbar", background=colors["accent"], troughcolor=colors["subtle"],
+                    lightcolor=colors["accent"], darkcolor=colors["accent"], thickness=2)
+    style.configure("UsageDanger.Horizontal.TProgressbar", background=colors["error"], troughcolor=colors["subtle"],
+                    lightcolor=colors["error"], darkcolor=colors["error"], thickness=2)
     root.option_add("*TCombobox*Listbox.background", colors["surface"])
     root.option_add("*TCombobox*Listbox.foreground", colors["text"])
     root.option_add("*TCombobox*Listbox.selectBackground", colors["selection"])
