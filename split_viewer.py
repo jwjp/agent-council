@@ -7,9 +7,10 @@ from ui_theme import FONT
 
 
 class SplitViewer(ttk.Panedwindow):
-    def __init__(self, parent, agents, messages, names, colors, translate):
+    def __init__(self, parent, agents, messages, names, colors, translate, stage_title):
         super().__init__(parent, orient="horizontal")
         self.names, self.colors, self.t = names, colors, translate
+        self.stage_title = stage_title
         self.messages = messages
         self.agents = agents
         self.states = {}
@@ -59,19 +60,37 @@ class SplitViewer(ttk.Panedwindow):
                 view.tag_delete(tag)
         pane["markdown"].tables.clear()
         view.delete("1.0", "end")
-        matching = [item for item in self.messages if self.matches(pane, item["role"])]
+        start = next((i + 1 for i in range(len(self.messages) - 1, -1, -1)
+                      if self.messages[i]["role"] == "You"), 0)
+        matching = [item for item in self.messages[start:] if self.matches(pane, item["role"])]
         pane["placeholder"] = not matching
         if not matching:
             view.insert("end", self.t("Reports will appear here.", "답변과 검수 결과가 여기에 표시됩니다."), "md_quote")
         for index, item in enumerate(matching):
             if index:
                 view.insert("end", "\n────────────\n\n", "md_rule")
-            pane["markdown"].render(item["text"])
+            self.render_item(pane, item)
         view.configure(state="disabled")
         view.yview_moveto(1.0)
         self.refresh_pane(pane)
 
+    def render_item(self, pane, item):
+        if title := self.stage_title(item.get("stage")):
+            pane["view"].insert("end", title + "\n", "md_h3")
+        pane["markdown"].render(item["text"])
+
+    def show_agent(self, index, name):
+        if name in self.agents:
+            pane = self.panes[index]
+            pane["picker"].current(self.agents.index(name))
+            self.select(pane, name)
+
     def append(self, item):
+        if item["role"] == "You":
+            for index, pane in enumerate(self.panes):
+                name = pane["name"]
+                self.show_agent(index, self.agents[index] if name == "council" else name)
+            return
         for pane in self.panes:
             if not self.matches(pane, item["role"]):
                 continue
@@ -83,7 +102,7 @@ class SplitViewer(ttk.Panedwindow):
                 pane["placeholder"] = False
             if view.index("end-1c") != "1.0":
                 view.insert("end", "\n────────────\n\n", "md_rule")
-            pane["markdown"].render(item["text"])
+            self.render_item(pane, item)
             view.configure(state="disabled")
             if follow:
                 view.see("end")
