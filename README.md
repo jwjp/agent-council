@@ -7,7 +7,7 @@ A Windows desktop chat for a coding agent, review agents, or both.
 1. Download `AgentCouncil-Windows-x64.zip` from [Releases](https://github.com/jwjp/agent-council/releases/latest).
 2. Extract both files to a writable folder and open `Launch Agent Council.cmd`. Python is bundled.
 3. In **Settings**, choose a project folder and the agents you want. Install and sign in to their CLIs and make sure they are on Windows PATH.
-4. Type in the main chat. Enter sends. Shift+Enter inserts a new line. Choose **한국어** in Settings to switch the interface and model responses from English.
+4. Type in the main chat. Enter sends. Shift+Enter inserts a new line. Choose **한국어** in Settings to switch the interface and model responses from English. **Appearance** switches between light and dark.
 
 ## Roles and permissions
 

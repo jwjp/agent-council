@@ -18,8 +18,9 @@ import webbrowser
 
 from multi_ai import AGENTS, CODING_AGENTS, antigravity_rate_limits, codex_rate_limits
 from project_chat import ProjectChat
+from ui_theme import FONT, PALETTES, blend, install
 
-VERSION = "1.4.3"
+VERSION = "1.5.0"
 REPO = "jwjp/agent-council"
 ASSET = "AgentCouncil.exe"
 CONFIG = Path(os.getenv("LOCALAPPDATA", Path.home())) / "AgentCouncil" / "settings.json"
@@ -129,6 +130,10 @@ class App:
         except (OSError, ValueError):
             config = {}
         self.lang = config.get("language", "English")
+        self.appearance = config.get("appearance", "light")
+        if self.appearance not in PALETTES:
+            self.appearance = "light"
+        self.colors = install(root, self.appearance)
         folder = Path(config.get("folder") or Path.home()).expanduser()
         self.folder = (folder if folder.is_dir() else Path.home()).resolve()
         self.coder = config.get("coder", "claude")
@@ -140,20 +145,21 @@ class App:
         root.title(f"Agent Council {VERSION}")
         root.geometry("900x720")
         root.minsize(640, 500)
-        self.body = ttk.Frame(root, padding=16)
+        self.body = ttk.Frame(root, padding=(18, 12))
         self.body.pack(fill="both", expand=True)
         self.header = ttk.Frame(self.body)
         self.header.pack(fill="x")
-        ttk.Label(self.header, text="Agent Council", font=("Segoe UI", 20, "bold")).pack(side="left")
-        ttk.Label(self.header, text=VERSION, foreground="#50617b").pack(side="left", padx=(7, 0))
+        ttk.Label(self.header, text="Agent Council", font=(FONT, 16, "bold")).pack(side="left")
+        ttk.Label(self.header, text=VERSION, style="Muted.TLabel").pack(side="left", padx=(7, 0))
         self.settings_button = ttk.Button(self.header, command=self.settings)
         self.settings_button.pack(side="left", padx=(10, 0))
         self.update_button = ttk.Button(self.header, command=self.update)
         self.update_button.pack(side="right", padx=8)
         self.usage_button = ttk.Button(self.header, command=self.show_usage)
         self.usage_button.pack(side="right")
-        self.folder_label = ttk.Label(self.body)
-        self.folder_label.pack(anchor="w", pady=(4, 0))
+        self.folder_label = ttk.Label(self.body, style="Muted.TLabel")
+        self.folder_label.pack(anchor="w", pady=(7, 8))
+        ttk.Separator(self.body).pack(fill="x")
         self.chat = None
         self.build_chat(config.get("draft", ""))
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -170,7 +176,7 @@ class App:
         self.folder_label.configure(text=f"{self.t('Project', '프로젝트')} · {self.folder}   |   {refs}")
         language = "Korean" if self.lang == "한국어" else "English"
         self.chat = ProjectChat(self.body, self.folder, self.coder, self.reviewers, self.references,
-                                language, CONFIG.parent, NAMES, self.full, self.show_usage, self.record_limits)
+                                language, CONFIG.parent, NAMES, self.full, self.show_usage, self.record_limits, self.colors)
         self.chat.input.insert("1.0", draft)
         self.root.update_idletasks()
         self.root.minsize(640, max(500, self.body.winfo_reqheight()))
@@ -179,6 +185,7 @@ class App:
         CONFIG.parent.mkdir(parents=True, exist_ok=True)
         CONFIG.write_text(json.dumps({
             "language": self.lang, "folder": str(self.folder), "coder": self.coder,
+            "appearance": self.appearance,
             "reviewers": self.reviewers, "full_access": self.full, "references": list(map(str, self.references)),
             "draft": self.chat.input.get("1.0", "end-1c"),
         }, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -186,28 +193,37 @@ class App:
     def dim_background(self):
         style = ttk.Style(self.root)
         saved = []
+        shade = self.colors["shade"]
+
+        def muted(color):
+            return blend(color, shade)
 
         def dim(widget):
             kind = widget.winfo_class()
             options = {}
             if isinstance(widget, tk.Text):
-                options = {"background": "#dbe2eb", "foreground": "#5b6677"}
-                for tag in ("author", "user"):
+                options = {key: muted(widget.cget(key)) for key in ("background", "foreground")}
+                for tag in ("author", "user", "request", "code"):
                     if tag in widget.tag_names():
-                        saved.append((widget, tag, widget.tag_cget(tag, "foreground")))
-                        widget.tag_configure(tag, foreground="#5b6677")
+                        tag_colors = {key: widget.tag_cget(tag, key) for key in ("background", "foreground")}
+                        tag_colors = {key: value for key, value in tag_colors.items() if value}
+                        saved.append((widget, tag, tag_colors))
+                        widget.tag_configure(tag, **{key: muted(value) for key, value in tag_colors.items()})
             elif kind in {"TFrame", "TLabel", "TButton", "TLabelframe", "Treeview"}:
                 base = widget.cget("style") or kind
-                muted = f"Backdrop.{base}"
-                style.configure(muted, background="#d3dbe6", foreground="#5b6677", fieldbackground="#e0e6ee")
+                backdrop = f"Backdrop.{base}"
+                style.configure(backdrop,
+                                background=muted(style.lookup(base, "background") or self.colors["window"]),
+                                foreground=muted(style.lookup(base, "foreground") or self.colors["text"]),
+                                fieldbackground=muted(self.colors["surface"]))
                 if kind == "Treeview":
-                    style.configure(muted, rowheight=style.lookup(base, "rowheight") or 22)
-                    style.configure(f"{muted}.Heading", foreground="#5b6677")
+                    style.configure(backdrop, rowheight=style.lookup(base, "rowheight") or 22)
+                    style.configure(f"{backdrop}.Heading", foreground=muted(self.colors["muted"]),
+                                    background=muted(self.colors["subtle"]))
                 if kind == "TLabelframe":
-                    style.configure(f"{muted}.Label", background="#d3dbe6", foreground="#5b6677")
-                options = {"style": muted}
-                if kind == "TLabel":
-                    options["foreground"] = "#5b6677"
+                    style.configure(f"{backdrop}.Label", background=muted(self.colors["window"]),
+                                    foreground=muted(self.colors["muted"]))
+                options = {"style": backdrop}
             if options:
                 saved.append((widget, None, {key: widget.cget(key) for key in options}))
                 widget.configure(**options)
@@ -229,7 +245,7 @@ class App:
             for widget, tag, options in backdrop:
                 if widget.winfo_exists():
                     if tag:
-                        widget.tag_configure(tag, foreground=options)
+                        widget.tag_configure(tag, **options)
                     else:
                         widget.configure(**options)
 
@@ -237,7 +253,7 @@ class App:
         panel.bind("<Escape>", lambda _: panel.destroy())
         header = ttk.Frame(panel)
         header.pack(fill="x", pady=(0, 10))
-        ttk.Label(header, text=title, font=("Segoe UI", 12, "bold")).pack(side="left")
+        ttk.Label(header, text=title, font=(FONT, 12, "bold")).pack(side="left")
         ttk.Button(header, text=self.t("Close", "닫기"), command=panel.destroy).pack(side="right", padx=(12, 0))
         panel.place(relx=0.5, rely=0.5, anchor="center")
         panel.lift()
@@ -255,6 +271,8 @@ class App:
         panel.pack(fill="both", expand=True)
         folder = tk.StringVar(value=str(self.folder))
         language = tk.StringVar(value=self.lang)
+        appearances = {t("Light", "밝게"): "light", t("Dark", "어둡게"): "dark"}
+        appearance = tk.StringVar(value=next(label for label, mode in appearances.items() if mode == self.appearance))
         no_coder = t("None (review only)", "없음 (검수 전용)")
         coder = tk.StringVar(value=NAMES.get(self.coder, no_coder))
         full = tk.BooleanVar(value=self.full)
@@ -276,6 +294,9 @@ class App:
         picker.grid(row=1, column=0, sticky="w", padx=(0, 16), pady=3)
         ttk.Label(roles, text=t("Language", "언어")).grid(row=0, column=1, sticky="w")
         ttk.Combobox(roles, textvariable=language, state="readonly", values=("English", "한국어"), width=12).grid(row=1, column=1, sticky="w", pady=3)
+        ttk.Label(roles, text=t("Appearance", "화면 모드")).grid(row=0, column=2, sticky="w", padx=(12, 0))
+        ttk.Combobox(roles, textvariable=appearance, state="readonly", values=list(appearances), width=9).grid(
+            row=1, column=2, sticky="w", padx=(12, 0), pady=3)
         ttk.Label(panel, text=t("Review agents (optional)", "검수 AI (선택 사항)")).grid(row=3, column=0, sticky="w", pady=(12, 3))
         choices = ttk.Frame(panel)
         choices.grid(row=4, columnspan=2, sticky="w")
@@ -302,7 +323,11 @@ class App:
         sync_reviewers()
 
         ttk.Label(panel, text=t("Reference folders", "참고 폴더")).grid(row=6, columnspan=2, sticky="w", pady=(12, 3))
-        folder_list = tk.Listbox(panel, height=4, selectmode="extended")
+        folder_list = tk.Listbox(panel, height=3, selectmode="extended", font=(FONT, 9),
+                                 background=self.colors["surface"], foreground=self.colors["text"],
+                                 selectbackground=self.colors["selection"], selectforeground=self.colors["text"],
+                                 highlightbackground=self.colors["line"], highlightcolor=self.colors["accent"],
+                                 highlightthickness=1, borderwidth=0)
         folder_list.grid(row=7, column=0, sticky="ew")
         for reference in references:
             folder_list.insert("end", str(reference))
@@ -345,16 +370,19 @@ class App:
             draft = self.chat.input.get("1.0", "end-1c") if path == self.folder else ""
             if self.usage_dialog and self.usage_dialog.winfo_exists():
                 self.usage_dialog.destroy()
+            dialog.destroy()
             self.chat.close()
             self.folder, self.coder, self.reviewers, self.lang = path, selected_coder, selected_reviewers, language.get()
             self.references = [reference for reference in references if reference != path]
             self.full = allow_full
+            self.appearance = appearances[appearance.get()]
+            self.colors = install(self.root, self.appearance)
             self.build_chat(draft)
             self.save()
-            dialog.destroy()
             self.chat.input.focus_set()
 
-        ttk.Button(panel, text=t("Save settings", "설정 저장"), command=apply).grid(row=8, columnspan=2, sticky="e", pady=(16, 0))
+        ttk.Button(panel, text=t("Save settings", "설정 저장"), command=apply, style="Primary.TButton").grid(
+            row=8, columnspan=2, sticky="e", pady=(14, 0))
 
     def show_usage(self):
         t = self.t

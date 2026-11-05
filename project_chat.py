@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from multi_ai import call, parallel
+from ui_theme import FONT, TEXT_SIZE
 
 
 def git_context(cwd):
@@ -121,11 +122,12 @@ def response_parts(text):
 
 
 class ProjectChat:
-    def __init__(self, parent, cwd, coder, reviewers, references, language, state_root, names, full, show_usage, on_limits):
+    def __init__(self, parent, cwd, coder, reviewers, references, language, state_root, names, full, show_usage, on_limits, colors):
         self.cwd, self.coder, self.reviewers, self.references = cwd, coder, reviewers, references
         self.language, self.names, self.full = language, names, full
         self.show_usage = show_usage
         self.on_limits = on_limits
+        self.colors = colors
         self.events = queue.Queue()
         self.busy = False
         self.paused = False
@@ -139,31 +141,52 @@ class ProjectChat:
         self.messages = state.get("messages", [])
         self.usage = state.get("usage", {})
         t = self.t
-        panel = self.panel = ttk.Frame(parent, padding=(0, 12, 0, 0))
+        self.panel = ttk.Frame(parent, padding=(0, 10, 0, 0))
+        self.panel.pack(fill="both", expand=True)
+        panel = ttk.Frame(self.panel)
         panel.pack(fill="both", expand=True)
+        self.panel.bind("<Configure>", lambda event: panel.pack_configure(padx=max(0, (event.width - 900) // 2)))
         panel.columnconfigure(0, weight=1)
         panel.rowconfigure(1, weight=1)
+        panel.rowconfigure(4, minsize=8)
         mode = names[coder] if coder else t("Review only", "검수 전용")
         ttk.Label(panel, text=mode + "  ·  " + t("Reviewers", "검수자") + "  " +
                   (", ".join(names[n] for n in reviewers) or t("None", "없음")),
-                  foreground="#36517c", font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky="w")
-        transcript = ttk.Frame(panel)
+                  style="Muted.TLabel", font=(FONT, TEXT_SIZE, "bold")).grid(row=0, column=0, sticky="w", padx=2)
+        transcript = ttk.Frame(panel, style="Card.TFrame", padding=1)
         transcript.grid(row=1, column=0, sticky="nsew", pady=(8, 10))
-        self.view = tk.Text(transcript, height=1, wrap="word", padx=14, pady=10, state="disabled", background="#f4f7fb",
-                            foreground="#172238", font=("Segoe UI", 10), relief="flat")
+        self.view = tk.Text(transcript, height=1, wrap="word", padx=18, pady=12, state="disabled", background=colors["surface"],
+                            foreground=colors["text"], selectbackground=colors["selection"], selectforeground=colors["text"],
+                            font=(FONT, 10), relief="flat", borderwidth=0, highlightthickness=0)
         scrollbar = ttk.Scrollbar(transcript, command=self.view.yview)
         self.view.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
         self.view.pack(side="left", fill="both", expand=True)
-        self.view.tag_configure("author", foreground="#284a97", font=("Segoe UI", 10, "bold"), spacing1=6)
-        self.view.tag_configure("user", foreground="#12675e", font=("Segoe UI", 10, "bold"), spacing1=6)
-        self.view.tag_configure("body", lmargin1=4, lmargin2=4, spacing3=2)
+        self.view.tag_configure("author", foreground=colors["muted"], font=(FONT, 9, "bold"), spacing1=10, spacing3=3)
+        self.view.tag_configure("user", foreground=colors["accent"], font=(FONT, 9, "bold"), spacing1=10, spacing3=3, lmargin1=12)
+        self.view.tag_configure("body", spacing1=2, spacing3=4)
+        self.view.tag_configure("request", background=colors["user"], lmargin1=12, lmargin2=12, rmargin=18, spacing1=5, spacing3=5)
+        self.view.tag_configure("heading", font=(FONT, 10, "bold"), spacing1=5, spacing3=3)
+        self.view.tag_configure("code", font=("Consolas", TEXT_SIZE), background=colors["subtle"], lmargin1=10, lmargin2=10)
+        self.empty = None
+        if not self.messages:
+            self.empty = ttk.Frame(transcript, style="Surface.TFrame")
+            ttk.Label(self.empty, text=t("What are we working on?", "어떤 작업을 시작할까요?"),
+                      style="Surface.TLabel", font=(FONT, 16, "bold")).pack(pady=(0, 6))
+            ttk.Label(self.empty, text=t("Ask a question, request a change, or review this project.",
+                                       "질문하거나, 변경을 요청하거나, 프로젝트를 검수해 보세요."),
+                      style="Surface.Muted.TLabel").pack()
+            self.empty.place(relx=0.5, rely=0.46, anchor="center")
 
-        activity = ttk.LabelFrame(panel, text=t("Activity & tokens", "진행 상황 및 토큰"), padding=6)
+        activity = ttk.Frame(panel, style="Card.TFrame", padding=(10, 6))
         activity.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        ttk.Label(activity, text=t("Agent activity", "에이전트 진행 상황"), style="Surface.TLabel",
+                  font=(FONT, TEXT_SIZE, "bold")).pack(anchor="w", pady=(0, 5))
+        table_area = ttk.Frame(activity, style="Surface.TFrame")
+        table_area.pack(fill="x")
         ttk.Style().configure("Activity.Treeview", rowheight=22)
         agents = ([coder] if coder else []) + reviewers
-        self.table = ttk.Treeview(activity, columns=("agent", "state", "usage"), show="headings",
+        self.table = ttk.Treeview(table_area, columns=("agent", "state", "usage"), show="headings",
                                   height=max(1, min(3, len(agents))), style="Activity.Treeview")
         for column, label, width in (
             ("agent", t("Agent", "에이전트"), 125),
@@ -173,33 +196,40 @@ class ProjectChat:
             anchor = "e" if column == "usage" else "w"
             self.table.heading(column, text=label, anchor=anchor)
             self.table.column(column, width=width, minwidth=95, anchor=anchor)
-        scroll = ttk.Scrollbar(activity, command=self.table.yview)
+        scroll = ttk.Scrollbar(table_area, command=self.table.yview)
         self.table.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
         self.table.pack(side="top", fill="x")
-        self.table.tag_configure("active", foreground="#2457ab")
-        self.table.tag_configure("failed", foreground="#a12537")
-        self.table.tag_configure("done", foreground="#19684f")
+        self.table.tag_configure("active", foreground=colors["accent"])
+        self.table.tag_configure("failed", foreground=colors["error"])
+        self.table.tag_configure("done", foreground=colors["success"])
         for name in agents:
             self.table.insert("", "end", iid=name, values=(names[name], t("Ready", "준비"), self.token_text(name)))
         ttk.Label(activity, text=t("Reported usage in this project. — means no data.",
                                   "이 프로젝트에서 보고된 사용량입니다. —는 데이터 없음입니다."),
-                  foreground="#50617b").pack(anchor="w", pady=(3, 0))
-        self.input = tk.Text(panel, height=3, wrap="word", padx=10, pady=7, font=("Segoe UI", 11),
-                             relief="solid", borderwidth=1, highlightcolor="#3c67b8", highlightthickness=1)
-        self.input.grid(row=3, column=0, sticky="ew")
+                  style="Surface.Muted.TLabel").pack(anchor="w", pady=(3, 0))
+        composer = ttk.Frame(panel, style="Card.TFrame", padding=(9, 7))
+        composer.grid(row=3, column=0, sticky="ew")
+        self.input = tk.Text(composer, height=3, wrap="word", padx=6, pady=4, font=(FONT, TEXT_SIZE),
+                             relief="flat", borderwidth=0, highlightthickness=0, background=colors["surface"],
+                             foreground=colors["text"], insertbackground=colors["text"],
+                             selectbackground=colors["selection"], selectforeground=colors["text"])
+        self.input.pack(fill="x")
         self.input.bind("<Return>", lambda _: (self.send(), "break")[1])
         self.input.bind("<Shift-Return>", self.insert_newline)
-        actions = ttk.Frame(panel)
-        actions.grid(row=4, column=0, sticky="ew", pady=(6, 0))
-        self.send_button = ttk.Button(actions, text=t("Send", "보내기"), command=self.send)
+        actions = ttk.Frame(composer, style="Surface.TFrame")
+        actions.pack(fill="x", pady=(4, 0))
+        self.send_button = ttk.Button(actions, text=t("Send  ↑", "보내기  ↑"), command=self.send, style="Primary.TButton")
         self.send_button.pack(side="right")
         ttk.Label(actions, text=t("Enter to send  ·  Shift+Enter for a new line",
-                                   "Enter 전송  ·  Shift+Enter 줄바꿈"), foreground="#50617b").pack(side="left")
+                                   "Enter 전송  ·  Shift+Enter 줄바꿈"), style="Surface.Muted.TLabel").pack(side="left", padx=6)
         self.progress = ttk.Progressbar(panel, mode="indeterminate")
-        self.progress.grid(row=5, column=0, sticky="ew", pady=(6, 0))
+        self.progress.grid(row=4, column=0, sticky="ew", pady=(5, 0))
+        self.progress.grid_remove()
         for item in self.messages:
             self.render(item)
+        if self.messages:
+            self.view.after_idle(lambda: self.view.yview_moveto(1.0))
         self.input.focus_set()
         self.poll_id = self.panel.after(150, self.poll)
 
@@ -216,11 +246,27 @@ class ProjectChat:
         user = item["role"] == "You"
         role = self.t("You", "나") if user else self.names.get(item["role"], item["role"])
         self.view.insert("end", role + "\n", "user" if user else "author")
-        self.view.insert("end", item["text"] + "\n", "body")
+        if user:
+            self.view.insert("end", item["text"] + "\n", "request")
+        else:
+            in_code = False
+            for line in item["text"].split("\n"):
+                if line.lstrip().startswith("```"):
+                    in_code = not in_code
+                elif in_code:
+                    self.view.insert("end", line + "\n", "code")
+                elif line.startswith(("# ", "## ", "### ", "#### ")):
+                    self.view.insert("end", line.lstrip("#").lstrip() + "\n", "heading")
+                else:
+                    self.view.insert("end", line + "\n", "body")
         self.view.configure(state="disabled")
-        self.view.see("end")
+        if self.view.winfo_ismapped():
+            self.view.see("end")
 
     def add(self, role, text):
+        if self.empty:
+            self.empty.destroy()
+            self.empty = None
         item = {"role": role, "text": text}
         self.messages.append(item)
         self.render(item)
@@ -266,6 +312,7 @@ class ProjectChat:
             self.table.set(name, "state", self.t("Queued", "대기"))
         self.input.delete("1.0", "end")
         self.send_button.state(["disabled"])
+        self.progress.grid()
         self.progress.start(15)
         history = list(self.messages)
         self.add("You", request)
@@ -327,6 +374,7 @@ class ProjectChat:
                         self.table.set(name, "state", self.t("Skipped", "생략"))
                 self.busy = False
                 self.progress.stop()
+                self.progress.grid_remove()
                 self.pause(self.paused)
         now = time.monotonic()
         for name, (label, started, last_output, tool) in self.work.items():
