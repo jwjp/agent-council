@@ -12,6 +12,7 @@ from tkinter import messagebox, ttk
 
 from multi_ai import call, parallel
 from markdown_view import MarkdownView
+from split_viewer import SplitViewer
 from ui_theme import FONT, TEXT_SIZE
 from windows_ime import install as install_ime
 
@@ -38,7 +39,7 @@ def git_context(cwd):
         return ""
 
 
-def project_turn(cwd, messages, request, full_access, coder, reviewers, references, language, emit, activity):
+def project_turn(cwd, messages, request, full_access, coder, reviewers, references, language, emit, activity, respond):
     history = "\n\n".join(f"{item['role']}: {item['text'][:3200]}" for item in messages[-10:])
     context = (
         f"Respond in {language}. The working directory is the selected project. "
@@ -52,16 +53,21 @@ def project_turn(cwd, messages, request, full_access, coder, reviewers, referenc
         f"<history>{history}</history>\n<request>{request}</request>"
     )
     def review(prompt):
+        def review_event(_, name, result):
+            if not name:
+                emit("Reviewing", "")
+                return
+            emit("Reviewed" if result["ok"] else "Failed", name)
+            respond(name, result["text"] if result["ok"] else result["error"] or "Review failed.")
+
         return parallel(reviewers, prompt, cwd, 2,
-                        lambda _, name, result: emit(("Reviewed" if result["ok"] else "Failed") if name else "Reviewing", name),
-                        review=True, activity=activity)
+                        review_event, review=True, activity=activity)
 
     if not coder:
-        results = review(context + "\nReview the request and relevant project files. Offer findings and advice only. "
-                         "Do not edit files, install packages, or execute commands that change state. "
-                         "Give evidence, flag uncertainties, and ask for clarification if needed.")
-        return [(name, results[name]["text"] if results[name]["ok"] else results[name]["error"] or "Review failed.")
-                for name in reviewers]
+        review(context + "\nReview the request and relevant project files. Offer findings and advice only. "
+               "Do not edit files, install packages, or execute commands that change state. "
+               "Give evidence, flag uncertainties, and ask for clarification if needed.")
+        return
 
     baseline = git_context(cwd) if reviewers else ""
     emit("Implementing", coder)
@@ -75,11 +81,13 @@ def project_turn(cwd, messages, request, full_access, coder, reviewers, referenc
     )
     if not result["ok"]:
         emit("Failed", coder)
-        return [(coder, result["error"] or "Implementation failed.")]
+        respond(coder, result["error"] or "Implementation failed.")
+        return
     kind, report = response_parts(result["text"])
-    entries = [(coder, report)]
+    emit("Done", coder)
+    respond(coder, report)
     if not reviewers or kind in {"ANSWER", "QUESTION"}:
-        return entries
+        return
 
     changed = git_context(cwd)
     review_prompt = (
@@ -92,13 +100,11 @@ def project_turn(cwd, messages, request, full_access, coder, reviewers, referenc
         f"<request>{request}</request>\n<report>{report[:3500]}</report>\n"
         f"<before>{baseline[:3500]}</before>\n<after>{changed[:6500]}</after>"
     )
-    emit("Done", coder)
     reviews = review(review_prompt)
     findings = []
     for name in reviewers:
         result = reviews[name]
         response = result["text"] if result["ok"] else result["error"] or "Review failed."
-        entries.append((name, response))
         if result["ok"] and response_parts(response)[0] == "FIX_REQUIRED":
             findings.append(f"{name}: {response[:2800]}")
     if findings:
@@ -110,10 +116,8 @@ def project_turn(cwd, messages, request, full_access, coder, reviewers, referenc
             "and report what changed, what you checked and any remaining issues.",
             cwd, implement=True, full_access=full_access, activity=activity,
         )
-        entries.append((coder, response_parts(revision["text"])[1] if revision["ok"] else revision["error"] or "Revision failed."))
-        if not revision["ok"]:
-            emit("Failed", coder)
-    return entries
+        emit("Done" if revision["ok"] else "Failed", coder)
+        respond(coder, response_parts(revision["text"])[1] if revision["ok"] else revision["error"] or "Revision failed.")
 
 
 def response_parts(text):
@@ -135,6 +139,7 @@ class ProjectChat:
         self.busy = False
         self.paused = False
         self.work = {}
+        self.previews = {}
         key = hashlib.sha256(str(cwd).casefold().encode()).hexdigest()
         self.path = state_root / "chats" / f"{key}.json"
         try:
@@ -143,20 +148,31 @@ class ProjectChat:
             state = {}
         self.messages = state.get("messages", [])
         self.usage = state.get("usage", {})
+        agents = ([coder] if coder else []) + reviewers
+        historical = {item["role"] for item in self.messages}
+        self.split_agents = list(dict.fromkeys(agents + [name for name in names if name in historical or names[name] in historical]))
+        self.split_enabled = len(self.split_agents) >= 2 and state.get("split_view", True)
+        self.split = None
         t = self.t
         self.panel = ttk.Frame(parent, padding=(0, 10, 0, 0))
         self.panel.pack(fill="both", expand=True)
-        panel = ttk.Frame(self.panel)
+        panel = self.content = ttk.Frame(self.panel)
         panel.pack(fill="both", expand=True)
-        self.panel.bind("<Configure>", lambda event: panel.pack_configure(padx=max(0, (event.width - 900) // 2)))
+        self.panel.bind("<Configure>", lambda _: self.fit_content())
         panel.columnconfigure(0, weight=1)
         panel.rowconfigure(1, weight=1)
         panel.rowconfigure(4, minsize=8)
         mode = names[coder] if coder else t("Review only", "검수 전용")
-        ttk.Label(panel, text=mode + "  ·  " + t("Reviewers", "검수자") + "  " +
+        toolbar = ttk.Frame(panel)
+        toolbar.grid(row=0, column=0, sticky="ew")
+        self.split_button = ttk.Button(toolbar, command=self.toggle_split)
+        self.split_button.pack(side="right")
+        if len(self.split_agents) < 2:
+            self.split_button.state(["disabled"])
+        ttk.Label(toolbar, text=mode + "  ·  " + t("Reviewers", "검수자") + "  " +
                   (", ".join(names[n] for n in reviewers) or t("None", "없음")),
-                  style="Muted.TLabel", font=(FONT, TEXT_SIZE, "bold")).grid(row=0, column=0, sticky="w", padx=2)
-        transcript = ttk.Frame(panel, style="Card.TFrame", padding=1)
+                  style="Muted.TLabel", font=(FONT, TEXT_SIZE, "bold")).pack(side="left", padx=2)
+        transcript = self.transcript = ttk.Frame(panel, style="Card.TFrame", padding=1)
         transcript.grid(row=1, column=0, sticky="nsew", pady=(8, 10))
         self.view = tk.Text(transcript, height=1, wrap="word", padx=18, pady=12, state="disabled", background=colors["surface"],
                             foreground=colors["text"], selectbackground=colors["selection"], selectforeground=colors["text"],
@@ -186,7 +202,6 @@ class ProjectChat:
         table_area = ttk.Frame(activity, style="Surface.TFrame")
         table_area.pack(fill="x")
         ttk.Style().configure("Activity.Treeview", rowheight=22)
-        agents = ([coder] if coder else []) + reviewers
         self.table = ttk.Treeview(table_area, columns=("agent", "state", "usage"), show="headings",
                                   height=max(1, min(3, len(agents))), style="Activity.Treeview")
         for column, label, width in (
@@ -233,11 +248,46 @@ class ProjectChat:
             self.render(item)
         if self.messages:
             self.view.after_idle(lambda: self.view.yview_moveto(1.0))
+        self.show_layout()
         self.input.focus_set()
         self.poll_id = self.panel.after(150, self.poll)
 
     def t(self, english, korean):
         return korean if self.language == "Korean" else english
+
+    def fit_content(self):
+        maximum = 1250 if self.split_enabled else 900
+        padding = max(0, (self.panel.winfo_width() - maximum) // 2)
+        self.content.pack_configure(padx=padding)
+
+    def toggle_split(self):
+        self.split_enabled = not self.split_enabled
+        self.show_layout()
+        top = self.panel.winfo_toplevel()
+        top.update_idletasks()
+        top.minsize(top.minsize()[0], max(500, self.panel.master.winfo_reqheight()))
+        self.save()
+
+    def show_layout(self):
+        self.content.rowconfigure(1, minsize=195 if self.split_enabled else 72)
+        self.split_button.configure(text=self.t("Conversation", "대화 보기") if self.split_enabled else
+                                    self.t("Split view", "분할 보기"))
+        if self.split_enabled:
+            self.transcript.grid_remove()
+            if self.split is None:
+                self.split = SplitViewer(self.content, self.split_agents, self.messages, self.names, self.colors, self.t)
+            self.split.grid(row=1, column=0, sticky="nsew", pady=(8, 10))
+            self.refresh_split()
+        else:
+            if self.split:
+                self.split.grid_remove()
+            self.transcript.grid()
+        self.fit_content()
+
+    def refresh_split(self):
+        if self.split_enabled and self.split:
+            states = {name: self.table.set(name, "state") for name in self.table.get_children()}
+            self.split.refresh(states, self.previews)
 
     def insert_newline(self, _event):
         self.input.insert("insert", "\n")
@@ -245,6 +295,7 @@ class ProjectChat:
         return "break"
 
     def render(self, item):
+        follow = self.view.yview()[1] >= 0.99
         self.view.configure(state="normal")
         user = item["role"] == "You"
         role = self.t("You", "나") if user else self.names.get(item["role"], item["role"])
@@ -254,7 +305,7 @@ class ProjectChat:
         else:
             self.markdown.render(item["text"])
         self.view.configure(state="disabled")
-        if self.view.winfo_ismapped():
+        if follow and self.view.winfo_ismapped():
             self.view.see("end")
 
     def add(self, role, text):
@@ -264,6 +315,8 @@ class ProjectChat:
         item = {"role": role, "text": text}
         self.messages.append(item)
         self.render(item)
+        if self.split:
+            self.split.append(item)
         self.save()
 
     def token_text(self, name):
@@ -280,7 +333,8 @@ class ProjectChat:
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temp = self.path.with_suffix(".tmp")
-        temp.write_text(json.dumps({"messages": self.messages, "usage": self.usage}, ensure_ascii=False), encoding="utf-8")
+        temp.write_text(json.dumps({"messages": self.messages, "usage": self.usage, "split_view": self.split_enabled},
+                                   ensure_ascii=False), encoding="utf-8")
         temp.replace(self.path)
 
     def send(self):
@@ -301,6 +355,7 @@ class ProjectChat:
             return
         self.busy = True
         self.work.clear()
+        self.previews.clear()
         for name in self.table.get_children():
             self.table.item(name, tags=())
             self.table.set(name, "state", self.t("Queued", "대기"))
@@ -313,15 +368,16 @@ class ProjectChat:
 
         def worker():
             try:
-                entries = project_turn(
+                project_turn(
                     self.cwd, history, request, self.full, self.coder, self.reviewers, self.references, self.language,
                     lambda *event: self.events.put(("phase", event)),
                     lambda *event: self.events.put(("activity", event)),
+                    lambda *event: self.events.put(("response", event)),
                 )
             except Exception as exc:
                 self.events.put(("phase", ("Failed", self.coder)))
-                entries = [("Agent Council", str(exc))]
-            self.events.put(("done", entries))
+                self.events.put(("response", ("Agent Council", str(exc))))
+            self.events.put(("done", None))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -332,6 +388,7 @@ class ProjectChat:
         }
         for agent in ([name] if name else self.reviewers):
             label = self.t(phase, translations[phase])
+            self.previews.pop(agent, None)
             if phase in {"Done", "Reviewed", "Failed"}:
                 self.work.pop(agent, None)
                 self.table.item(agent, tags=("failed" if phase == "Failed" else "done",))
@@ -358,9 +415,11 @@ class ProjectChat:
                     self.save()
                 elif event == "limits":
                     self.on_limits(name, detail)
+                elif event == "preview" and name in self.work:
+                    self.previews[name] = detail
+            elif kind == "response":
+                self.add(*value)
             else:
-                for role, text in value:
-                    self.add(role, text)
                 for name in list(self.work):
                     self.phase("Done", name)
                 for name in self.table.get_children():
@@ -378,6 +437,7 @@ class ProjectChat:
                 detail = self.t("tool event", "도구 이벤트") if tool else self.t("output", "출력")
                 detail += f" {int(now - last_output)}s " + self.t("ago", "전")
             self.table.set(name, "state", f"{label} · {int(now-started)}s · {detail}")
+        self.refresh_split()
         self.poll_id = self.panel.after(150, self.poll)
 
     def close(self):

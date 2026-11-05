@@ -18,6 +18,7 @@ class MarkdownView:
         self.view, self.colors = view, colors
         self.tables = []
         self.link_index = 0
+        self.wheel_delta = 0
         for name, options in {
             "md_paragraph": {"spacing1": 2, "spacing3": 7},
             "md_h1": {"font": (FONT, 15, "bold"), "spacing1": 10, "spacing3": 6},
@@ -130,6 +131,7 @@ class MarkdownView:
         if not rows or not rows[0]:
             return
         frame = tk.Frame(self.view, background=self.colors["line"], padx=1, pady=1, borderwidth=0)
+        self.bind_table_scroll(frame)
         cells = []
         for index, row in enumerate(rows):
             for column, cell in enumerate(row):
@@ -138,6 +140,7 @@ class MarkdownView:
                                  foreground=self.colors["text"],
                                  background=self.colors["subtle" if index == 0 else "surface"], padx=8, pady=5)
                 label.grid(row=index, column=column, sticky="nsew", padx=(0, 1), pady=(0, 1))
+                self.bind_table_scroll(label)
                 cells.append(label)
         self.view.window_create("end", window=frame, padx=1, pady=5)
         self.put("\n")
@@ -149,8 +152,24 @@ class MarkdownView:
         return "".join(node.get("raw", "") or MarkdownView.plain(node.get("children", [])) for node in nodes)
 
     def resize_tables(self, _event=None):
-        available = max(200, self.view.winfo_width() - 48)
+        available = max(120, self.view.winfo_width() - 42)
         for columns, cells in self.tables:
-            width = max(30, min(240, available // columns - 18))
+            width = max(10, min(240, available // columns - 18))
             for cell in cells:
                 cell.configure(wraplength=width)
+
+    def bind_table_scroll(self, widget):
+        widget.bind("<MouseWheel>", self.scroll_table)
+        widget.bind("<Button-4>", self.scroll_table)
+        widget.bind("<Button-5>", self.scroll_table)
+
+    def scroll_table(self, event):
+        if event.num in (4, 5):
+            steps = 1 if event.num == 4 else -1
+        else:
+            self.wheel_delta += event.delta
+            steps = int(self.wheel_delta / 120)
+            self.wheel_delta -= steps * 120
+        if steps:
+            self.view.yview_scroll(-steps * 3, "units")
+        return "break"

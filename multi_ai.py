@@ -163,13 +163,21 @@ def stream_call(name, args, prompt, cwd, activity):
     if name == "codex":
         args.insert(-1, "--json")
     elif name == "claude":
-        args.extend(("--verbose", "--output-format", "stream-json"))
+        args.extend(("--verbose", "--output-format", "stream-json", "--include-partial-messages"))
     elif name in ("agy", "grok", "gemini"):
         output_format = "streaming-json" if name == "grok" else "stream-json"
         args[1:1] = ["--output-format", output_format]
     answer, errors = [], []
     usage = {}
     failed = False
+    preview_tail = ""
+
+    def publish(fragment, reset=False):
+        nonlocal preview_tail
+        if not isinstance(fragment, str) or not fragment:
+            return
+        preview_tail = (fragment if reset else preview_tail + fragment)[-180:]
+        activity(name, "preview", " ".join(preview_tail.split()))
 
     def read_stdout(pipe):
         nonlocal failed
@@ -177,6 +185,7 @@ def stream_call(name, args, prompt, cwd, activity):
             if name == "agent":
                 answer.append(line)
                 activity(name, "output", None)
+                publish(line)
                 continue
             try:
                 event = json.loads(line)
@@ -199,6 +208,14 @@ def stream_call(name, args, prompt, cwd, activity):
             reported = {}
             if name == "codex" and kind == "item.completed" and item.get("type") == "agent_message":
                 answer[:] = [item.get("text", "")]
+                publish(item.get("text"), reset=True)
+            elif name == "codex" and kind == "item.updated" and item.get("type") == "agent_message":
+                publish(item.get("text"), reset=True)
+            elif name == "claude" and kind == "stream_event":
+                partial = event.get("event") or {}
+                delta = partial.get("delta") or {}
+                if partial.get("type") == "content_block_delta" and delta.get("type") == "text_delta":
+                    publish(delta.get("text"))
             elif name == "claude" and kind == "result":
                 answer[:] = [event.get("result", "")]
                 failed = event.get("is_error", False)
@@ -212,16 +229,21 @@ def stream_call(name, args, prompt, cwd, activity):
                 reported = result.get("usage") or {}
                 if result.get("error"):
                     errors.append(str(result["error"]))
+            elif name == "agy" and kind == "step_update":
+                step = event.get("step_update") or {}
+                if step.get("step_type") == "agent_response":
+                    publish(step.get("text_delta"))
             elif name == "grok" and kind == "text":
                 data = event.get("data")
-                if isinstance(data, str):
-                    answer.append(data)
-                elif isinstance(data, dict):
-                    answer.append(data.get("text") or "")
+                fragment = data if isinstance(data, str) else data.get("text") if isinstance(data, dict) else ""
+                if fragment:
+                    answer.append(fragment)
+                    publish(fragment)
             elif name == "gemini" and kind == "message" and event.get("role") == "assistant":
                 if not event.get("delta"):
                     answer.clear()
                 answer.append(event.get("content") or "")
+                publish(event.get("content"), reset=not event.get("delta"))
             elif name == "gemini" and kind == "result":
                 failed = event.get("status") != "success"
                 reported = event.get("stats") or {}
