@@ -176,8 +176,8 @@ def stream_call(name, args, prompt, cwd, activity):
         nonlocal preview_tail
         if not isinstance(fragment, str) or not fragment:
             return
-        preview_tail = (fragment if reset else preview_tail + fragment)[-180:]
-        activity(name, "preview", " ".join(preview_tail.split()))
+        preview_tail = (fragment if reset else preview_tail + fragment)[-640:]
+        activity(name, "preview", preview_tail)
 
     def read_stdout(pipe):
         nonlocal failed
@@ -201,9 +201,15 @@ def stream_call(name, args, prompt, cwd, activity):
                     activity(name, "limits", info)
             item = event.get("item") or {}
             detail = item.get("type", kind)
-            if kind == "assistant":
-                if any(block.get("type") == "tool_use" for block in event.get("message", {}).get("content", [])):
-                    detail = "tool_use"
+            if kind in ("assistant", "user"):
+                for block in (event.get("message") or {}).get("content", []):
+                    if block.get("type") == "tool_use":
+                        tool_name = block.get("name", "")
+                        safe_name = tool_name[:45] if isinstance(tool_name, str) and tool_name.replace("_", "").isalnum() else ""
+                        detail = {"kind": "tool_use", "name": safe_name}
+                        break
+                    if block.get("type") == "tool_result":
+                        detail = "tool_result"
             activity(name, "output", detail)
             reported = {}
             if name == "codex" and kind == "item.completed" and item.get("type") == "agent_message":

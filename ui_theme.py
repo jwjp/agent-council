@@ -32,6 +32,8 @@ def install(root, mode):
     style.configure("Surface.TLabel", background=colors["surface"])
     style.configure("Muted.TLabel", foreground=colors["muted"])
     style.configure("Surface.Muted.TLabel", background=colors["surface"], foreground=colors["muted"])
+    style.configure("Note.TFrame", background=colors["subtle"])
+    style.configure("Note.TLabel", background=colors["subtle"], foreground=colors["muted"])
     style.configure("Card.TFrame", background=colors["surface"], borderwidth=1, relief="solid")
     style.configure("TButton", background=colors["subtle"], padding=(10, 5), borderwidth=1)
     style.map("TButton", background=[("active", colors["selection"])],

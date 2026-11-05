@@ -20,7 +20,7 @@ from multi_ai import AGENTS, CODING_AGENTS, antigravity_rate_limits, codex_rate_
 from project_chat import ProjectChat
 from ui_theme import FONT, PALETTES, blend, install
 
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 REPO = "jwjp/agent-council"
 ASSET = "AgentCouncil.exe"
 CONFIG = Path(os.getenv("LOCALAPPDATA", Path.home())) / "AgentCouncil" / "settings.json"

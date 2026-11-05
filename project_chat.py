@@ -10,6 +10,7 @@ import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from activity_feed import ActivityFeed
 from multi_ai import call, parallel
 from markdown_view import MarkdownView
 from split_viewer import SplitViewer
@@ -182,7 +183,6 @@ class ProjectChat:
         self.busy = False
         self.paused = False
         self.work = {}
-        self.previews = {}
         key = hashlib.sha256(str(cwd).casefold().encode()).hexdigest()
         self.path = state_root / "chats" / f"{key}.json"
         try:
@@ -191,11 +191,12 @@ class ProjectChat:
             state = {}
         self.messages = state.get("messages", [])
         self.usage = state.get("usage", {})
+        self.feed = ActivityFeed(state.get("activity"))
         agents = ([coder] if coder else []) + reviewers
         historical = {item["role"] for item in self.messages}
         self.split_agents = list(dict.fromkeys(agents + [name for name in names if name in historical or names[name] in historical]
                                               + (["council"] if reviewers else [])))
-        self.split_enabled = len(self.split_agents) >= 2 and state.get("split_view", True)
+        self.split_enabled = bool(self.split_agents) and state.get("split_view", len(self.split_agents) >= 2)
         self.split = None
         t = self.t
         self.panel = ttk.Frame(parent, padding=(0, 10, 0, 0))
@@ -217,7 +218,7 @@ class ProjectChat:
                             if self.messages[i]["role"] == "You"), -1)
         self.report_button.state(["!disabled" if any(item["role"] == "council" for item in self.messages[latest_turn + 1:])
                                   else "disabled"])
-        if len(self.split_agents) < 2:
+        if not self.split_agents:
             self.split_button.state(["disabled"])
         ttk.Label(toolbar, text=mode + "  ·  " + t("Reviewers", "검수자") + "  " +
                   (", ".join(names[n] for n in reviewers) or t("None", "없음")),
@@ -247,8 +248,13 @@ class ProjectChat:
 
         activity = ttk.Frame(panel, style="Card.TFrame", padding=(10, 6))
         activity.grid(row=2, column=0, sticky="ew", pady=(0, 8))
-        ttk.Label(activity, text=t("Agent activity", "에이전트 진행 상황"), style="Surface.TLabel",
-                  font=(FONT, TEXT_SIZE, "bold")).pack(anchor="w", pady=(0, 5))
+        activity_header = ttk.Frame(activity, style="Surface.TFrame")
+        activity_header.pack(fill="x", pady=(0, 5))
+        ttk.Label(activity_header, text=t("Agent activity", "에이전트 진행 상황"), style="Surface.TLabel",
+                  font=(FONT, TEXT_SIZE, "bold")).pack(side="left")
+        self.turn_step = ttk.Label(activity_header, text=t("Ready for a request", "다음 요청 대기"),
+                                   style="Surface.Muted.TLabel")
+        self.turn_step.pack(side="right")
         ttk.Label(activity, text=t("Current request", "현재 질문"), style="Surface.Muted.TLabel").pack(anchor="w")
         self.request_view = tk.Text(activity, height=2, width=1, wrap="word", padx=6, pady=3, state="disabled",
                                     background=colors["subtle"], foreground=colors["text"],
@@ -273,13 +279,14 @@ class ProjectChat:
         self.table.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
         self.table.pack(side="top", fill="x")
+        self.table.bind("<Double-1>", self.open_agent_activity)
         self.table.tag_configure("active", foreground=colors["accent"])
         self.table.tag_configure("failed", foreground=colors["error"])
         self.table.tag_configure("done", foreground=colors["success"])
         for name in agents:
             self.table.insert("", "end", iid=name, values=(names[name], t("Ready", "준비"), self.token_text(name)))
-        ttk.Label(activity, text=t("Reported usage in this project. — means no data.",
-                                  "이 프로젝트에서 보고된 사용량입니다. —는 데이터 없음입니다."),
+        ttk.Label(activity, text=t("Double-click an agent for activity. Tokens are project totals.",
+                                  "에이전트를 더블클릭하면 활동 기록이 열립니다. 토큰은 프로젝트 누계입니다."),
                   style="Surface.Muted.TLabel").pack(anchor="w", pady=(3, 0))
         composer = ttk.Frame(panel, style="Card.TFrame", padding=(9, 7))
         composer.grid(row=3, column=0, sticky="ew")
@@ -328,7 +335,8 @@ class ProjectChat:
     def show_layout(self):
         self.content.rowconfigure(1, minsize=195 if self.split_enabled else 72)
         self.split_button.configure(text=self.t("Conversation", "대화 보기") if self.split_enabled else
-                                    self.t("Split view", "분할 보기"))
+                                    self.t("Split view", "분할 보기") if len(self.split_agents) > 1 else
+                                    self.t("Agent view", "에이전트 보기"))
         if self.split_enabled:
             self.transcript.grid_remove()
             if self.split is None:
@@ -346,13 +354,23 @@ class ProjectChat:
         if self.split_enabled and self.split:
             states = {name: self.table.set(name, "state") for name in self.table.get_children()}
             states["council"] = self.t("In progress", "진행 중") if self.busy else self.t("Final result", "최종 결과")
-            self.split.refresh(states, self.previews)
+            self.split.refresh(states, self.feed.events)
 
     def show_report(self):
         if not self.split_enabled:
             self.toggle_split()
         if self.split:
-            self.split.show_agent(1, "council")
+            self.split.show_agent(min(1, len(self.split.panes) - 1), "council", show_log=False)
+
+    def open_agent_activity(self, event):
+        name = self.table.identify_row(event.y)
+        if name not in self.split_agents:
+            return
+        if not self.split_enabled:
+            self.toggle_split()
+        panes = self.split.panes
+        index = next((index for index, pane in enumerate(panes) if pane["name"] == name), 0)
+        self.split.show_agent(index, name, show_log=True)
 
     def show_request(self, text):
         self.request_view.configure(state="normal")
@@ -424,7 +442,8 @@ class ProjectChat:
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temp = self.path.with_suffix(".tmp")
-        temp.write_text(json.dumps({"messages": self.messages, "usage": self.usage, "split_view": self.split_enabled},
+        temp.write_text(json.dumps({"messages": self.messages, "usage": self.usage, "split_view": self.split_enabled,
+                                    "activity": self.feed.events},
                                    ensure_ascii=False), encoding="utf-8")
         temp.replace(self.path)
 
@@ -446,7 +465,8 @@ class ProjectChat:
             return
         self.busy = True
         self.work.clear()
-        self.previews.clear()
+        self.feed = ActivityFeed()
+        self.turn_step.configure(text=self.t("Getting everyone ready…", "작업을 준비하고 있어요…"))
         for name in self.table.get_children():
             self.table.item(name, tags=())
             self.table.set(name, "state", self.t("Queued", "대기"))
@@ -474,19 +494,28 @@ class ProjectChat:
 
     def phase(self, phase, name):
         translations = {
-            "Implementing": "작업 중", "Reviewing": "검수 중", "Reviewed": "검수 완료",
-            "Discussing": "회의 중", "Discussed": "회의 완료", "Summarizing": "최종 보고 작성 중",
+            "Implementing": "작업에 집중하는 중", "Reviewing": "꼼꼼히 검수하는 중", "Reviewed": "검수 완료",
+            "Discussing": "의견을 맞춰보는 중", "Discussed": "의견 정리 완료", "Summarizing": "보고서를 다듬는 중",
             "Done": "완료", "Failed": "실패",
         }
+        steps = {
+            "Implementing": self.t("Working on the request", "요청 작업"),
+            "Reviewing": self.t("Reviewing the evidence", "근거 검수"),
+            "Discussing": self.t("Comparing perspectives", "의견 비교"),
+            "Summarizing": self.t("Putting the report together", "최종 보고 정리"),
+        }
+        if phase in steps:
+            self.turn_step.configure(text=steps[phase])
+        now = time.monotonic()
         for agent in ([name] if name else self.reviewers):
             label = self.t(phase, translations[phase])
-            self.previews.pop(agent, None)
+            self.feed.phase(agent, label, now)
             if phase in {"Done", "Reviewed", "Discussed", "Failed"}:
                 self.work.pop(agent, None)
                 self.table.item(agent, tags=("failed" if phase == "Failed" else "done",))
                 self.table.set(agent, "state", label)
             else:
-                self.work[agent] = (label, time.monotonic(), None, False)
+                self.work[agent] = (label, now, None, "")
                 self.table.item(agent, tags=("active",))
 
     def poll(self):
@@ -498,7 +527,21 @@ class ProjectChat:
                 name, event, detail = value
                 if event == "output" and name in self.work:
                     label, started, _, _ = self.work[name]
-                    self.work[name] = (label, started, time.monotonic(), detail in {"tool_use", "command_execution", "file_change"})
+                    now = time.monotonic()
+                    tool_labels = {
+                        "tool_use": self.t("Tool called", "도구 호출"),
+                        "tool_call": self.t("Tool called", "도구 호출"),
+                        "tool_result": self.t("Tool returned a result", "도구 결과 수신"),
+                        "command_execution": self.t("Command activity", "명령 실행 활동"),
+                        "file_change": self.t("File change reported", "파일 변경 보고"),
+                    }
+                    event_kind = detail.get("kind") if isinstance(detail, dict) else detail
+                    tool = tool_labels.get(event_kind, "")
+                    if tool and isinstance(detail, dict) and detail.get("name"):
+                        tool += " · " + detail["name"]
+                    if tool:
+                        self.feed.tool(name, tool, now)
+                    self.work[name] = (label, started, now, tool)
                 elif event == "usage":
                     totals = self.usage.setdefault(name, {})
                     for key, count in detail.items():
@@ -508,7 +551,7 @@ class ProjectChat:
                 elif event == "limits":
                     self.on_limits(name, detail)
                 elif event == "preview" and name in self.work:
-                    self.previews[name] = detail
+                    self.feed.offer(name, detail, time.monotonic())
             elif kind == "response":
                 self.add(*value)
             else:
@@ -518,15 +561,18 @@ class ProjectChat:
                     if self.table.set(name, "state") == self.t("Queued", "대기"):
                         self.table.set(name, "state", self.t("Skipped", "생략"))
                 self.busy = False
+                self.turn_step.configure(text=self.t("Request finished", "이번 요청 종료"))
                 self.progress.stop()
                 self.progress.grid_remove()
                 self.pause(self.paused)
+                self.save()
         now = time.monotonic()
+        self.feed.tick(now)
         for name, (label, started, last_output, tool) in self.work.items():
             if last_output is None:
-                detail = self.t("waiting for output", "첫 출력 대기")
+                detail = self.t("waiting for a response", "응답 대기")
             else:
-                detail = self.t("tool event", "도구 이벤트") if tool else self.t("output", "출력")
+                detail = tool or self.t("response activity", "응답 수신")
                 detail += f" {int(now - last_output)}s " + self.t("ago", "전")
             self.table.set(name, "state", f"{label} · {int(now-started)}s · {detail}")
         self.refresh_split()

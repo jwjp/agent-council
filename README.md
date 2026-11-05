@@ -19,7 +19,7 @@ A Windows desktop chat for a coding agent, review agents, or both.
 
 ## Progress and history
 
-The activity panel shows the current request and each agent's phase, elapsed time, and last CLI output. **Split view** opens two resizable, independently scrollable reports for the current turn. Select which agent to show in each pane. Results appear as agents finish, and supported CLI streams show a live output preview. The final report appears in the right pane when ready and can be reopened from the toolbar. Use **Conversation** to return to the full timeline. A CLI can stay silent while it waits for its provider.
+The activity panel shows the current request and each agent's phase, elapsed time, and last CLI activity. **Split view** opens two resizable, independently scrollable reports for the current turn. Select which agent to show in each pane. **Activity** switches to a timestamped log of phases, tool events, and paced notes from supported CLI responses. Double-click an agent in the activity table to open its log. Recent notes and events for the latest request are saved with the project and remain available after completion. The final report appears in the right pane when ready and can be reopened from the toolbar. Use **Conversation** to return to the full timeline. A CLI can stay silent while it waits for its provider.
 
 Input and output tokens reported by each CLI are saved per project from 1.4.1 onwards. Open **Usage** or type `/usage` to see all six agents. Codex and Antigravity account limits are read from their local CLIs. Claude Code limits appear when reported during a turn in the current app session. Grok and Cursor rows link to their usage dashboards, and Gemini CLI shows how to check with `/stats`.
 
