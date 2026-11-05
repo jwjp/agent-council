@@ -8,4 +8,17 @@ if errorlevel 1 (
   exit /b 1
 )
 :launch
-start "" "%~dp0AgentCouncil.exe"
+if exist "%~dp0AgentCouncil.exe" (
+  start "" "%~dp0AgentCouncil.exe"
+  exit /b 0
+)
+if exist "%~dp0dist\AgentCouncil.exe" (
+  start "" "%~dp0dist\AgentCouncil.exe"
+  exit /b 0
+)
+if exist "%~dp0src-tauri\target\release\AgentCouncil.exe" (
+  start "" "%~dp0src-tauri\target\release\AgentCouncil.exe"
+  exit /b 0
+)
+echo Build Agent Council with npm run tauri build, or download the Windows release.
+pause

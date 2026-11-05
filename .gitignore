@@ -3,3 +3,8 @@ multi_ai_runs/
 build/
 dist/
 *.spec
+node_modules/
+web-dist/
+src-tauri/target/
+src-tauri/gen/
+.runtime-test/

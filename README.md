@@ -1,42 +1,52 @@
 # Agent Council
 
-A Windows desktop chat for a coding agent, review agents, or both.
+A local workspace for coding agents and independent review. **Tauri 2 + React/TypeScript + Rust throughout.** No Python runtime, Electron or Node.js runtime is shipped. Node.js is a build tool only. Windows uses Microsoft WebView2.
 
 ## Install
 
-1. Download `AgentCouncil-Windows-x64.zip` from [Releases](https://github.com/jwjp/agent-council/releases/latest).
-2. Extract both files to a writable folder and open `Launch Agent Council.cmd`. Python is bundled.
-3. Open **☰ → Settings** (or **Ctrl+,**) to choose a project folder and the agents you want. Clicking the project name in the header opens workspace settings. Install and sign in to their CLIs and make sure they are on Windows PATH.
-4. Type in the main chat. Enter sends. Shift+Enter inserts a new line. Choose **한국어** in Settings to switch the interface and model responses from English. **Appearance** switches between light and dark.
+Download the Windows portable ZIP from [Releases](https://github.com/jwjp/agent-council/releases/latest), extract it and open `AgentCouncil.exe`. `Launch Agent Council.cmd` also launches the app, including from a source checkout with a built executable. Supported agent CLIs must be installed and signed in under your Windows user account and available on PATH.
 
-## Roles and permissions
+Open **Agents** to choose an optional lead agent and optional reviewers. The composer offers direct lead and execution permission selectors. Click the project name to select a folder. The top menu or **Ctrl+,** opens workspace and appearance settings, including reference folders, English/Korean, and light/dark/system appearance. Enter sends; Shift+Enter inserts a line. Korean IME composition is handled by WebView2, and Enter during composition does not send a request.
 
-- Choose any supported CLI as the default coding agent, or **Review only**. Reviewers are selected separately on agent cards.
-- Reviewers analyze the request and any coding work in parallel, including on analysis-only turns. Agents then exchange opinions and write a final report. Review and conference prompts ask for opinions without modifying files.
-- **Permissions** offers standard permissions, full access for the coder, or full access for all selected agents. The last mode passes each CLI's permission-bypass option to coding, review, conference and synthesis calls. The review role remains an instruction and is not a filesystem restriction in that mode. Existing coder-only permissions are preserved when upgrading.
-- Add optional **Reference folders** in Settings. Agents receive the paths and are instructed to consult them without editing them. This instruction does not enforce filesystem isolation. Access also depends on CLI permissions.
+## Runtime and workflow
 
-## Progress and history
-
-The activity panel appears after the first request. It shows the current request and compact agent status buttons with phase and elapsed time. Click an agent to open its activity log, or expand **Details** for the full activity and token table. This preference is saved with the conversation. **Split view** opens two resizable, independently scrollable reports for the current turn. Select which agent to show in each pane. **Activity** switches to a timestamped log of phases, tool events, and paced notes from supported CLI responses. Double-click an agent in the activity table to open its log. Recent notes and events for the latest request are saved with the project and remain available after completion. The final report appears in the right pane when ready and can be reopened from the toolbar. Use **Conversation** to return to the full timeline. A CLI can stay silent while it waits for its provider.
-
-Input and output tokens reported by each CLI are saved per project from 1.4.1 onwards. Open **Usage** or type `/usage` to see all six agents. Codex and Antigravity account limits are read from their local CLIs. Claude Code limits appear when reported during a turn in the current app session. Grok and Cursor rows link to their usage dashboards, and Gemini CLI shows how to check with `/stats`.
-
-The single-row bottom status strip shows the most-used reported account window as a used percentage and its reset countdown. Clicking **Usage** opens a compact bottom-left summary; clicking an agent opens its details. Without account quota data it shows reported project token totals with a `t` suffix, or a dash when no data is available. The refresh control queries available local quota readers. Settings and usage stay inside the app window and scroll when space is limited.
-
-The app keeps one local transcript per folder under `%LOCALAPPDATA%\AgentCouncil\chats`. The ten most recent messages, with excerpts for long messages, carry into each new request. Review prompts may include implementation reports and bounded Git diff and status excerpts. Prior council reports remain in project folders under `multi_ai_runs`.
+- The desktop shell starts a separate **Rust** runtime using the same executable (`--serve`). Closing a window leaves accepted work running. Reopening reconnects to the existing runtime.
+- The lead agent executes requested changes and relevant checks. Reviewers independently inspect the request and result. For implemented changes with confirmed review findings, the lead makes one bounded correction pass and reviewers recheck it. Participants then compare opinions and contribute to an attributed final report. Analysis does not automatically trigger edits. Review-only and lead-only turns are supported.
+- New installations default to all-agent full access. Existing installations retain their saved permission policy. Standard permissions and lead-only full access are also available. Reviews instruct agents not to modify files. With all-agent full access that instruction is not a filesystem restriction.
+- Reports render Markdown, code and tables. Split panes show different agents; activity logs retain phases, tools, and paced notes. Scrolling up does not force the reader back to the bottom.
+- Cancel stops the running CLI process tree on Windows. Job objects also close child processes if the Rust runtime exits. Interrupted work is marked **interrupted**, not silently restarted.
+- Messages, project drafts, job state and events persist in SQLite under `%LOCALAPPDATA%\AgentCouncil`. Existing v2 settings and per-folder chat JSON are imported without deleting the originals. Recent transcript excerpts carry into follow-up requests.
+- The bottom usage strip shows **account quota used** and reset countdowns. Click any agent for its quota windows, source, refresh time and separately reported project token counts. Existing local CLI/IDE logins are reused: Codex and Antigravity query their CLIs; Claude, Grok, Cursor and Gemini query the providers' usage endpoints. Credentials remain in memory and are not returned to the UI. Missing sign-ins, unavailable quotas and errors are explicit; token counts are never substituted for account percentages. Provider endpoint changes may require adapter updates. See [protocol acknowledgments](docs/THIRD_PARTY_NOTICES.md).
 
 ## Updates
 
-Click **☰ → Check for updates** and confirm installation. The app verifies GitHub's SHA-256 digest, then closes, replaces the executable, and restarts automatically. When upgrading from 1.4.1 or earlier, use the old launcher's restart step once, or download the new ZIP.
+Choose **App menu → Check for updates**. Installation is manual, verifies GitHub's SHA-256 asset digest, and restarts the app. Finish or cancel all work before updating. An upgrade from the Python app can use its existing update button to install the new executable.
 
-## Build from source
+## Remote/mobile foundation
 
-Use Python with Tkinter. Install Mistune and run the app from source, or install PyInstaller to build the executable:
+The Rust engine exposes an authenticated, versioned HTTP/SSE interface on an ephemeral **loopback-only** port. Durable event IDs support replay after a client disconnect. See [runtime protocol](docs/runtime-api.md) and the [OpenAPI contract](docs/openapi.json).
+
+This release is a **Windows desktop application**. Mobile binaries, device pairing and Tailscale connectivity are not enabled yet. Those clients can later use the same protocol; installing v3 does not expose the machine remotely.
+
+## Develop and verify
+
+Install Rust, Windows C++ build tools, Node.js and WebView2, then:
 
 ```powershell
-python -m pip install mistune==3.4.0
-python app.py
-python -m pip install pyinstaller
-python -m PyInstaller --noconfirm --onefile --windowed --name AgentCouncil app.py
+npm ci
+npm run tauri dev
 ```
+
+Opening the source `index.html` directly displays launch instructions. To run the React interface in a browser against the real Rust engine, first build the debug executable, then run `npm run dev` and open **http://127.0.0.1:1420**. The browser cannot launch a native directory picker; it accepts the folder path instead. The desktop executable provides the native picker and window controls.
+
+```powershell
+npm test
+cargo test --manifest-path src-tauri/Cargo.toml
+npm run build
+cargo build --manifest-path src-tauri/Cargo.toml
+node tests/runtime.mjs
+node tests/ui.mjs
+npm run tauri build
+```
+
+The runtime and browser integration tests use isolated data directories and deterministic native Rust CLI fixtures, not paid model calls. They check authentication, input validation, duplicate requests, lead/review/correction/recheck/conference/report ordering, token accounting, replay, descendant cancellation, persistence, distinct button actions, input preservation, Markdown table scrolling and compact layouts. Browser tests require installed Microsoft Edge and a free port 1420. Live agent/provider behavior requires separately signed-in CLIs.

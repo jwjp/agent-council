@@ -1,0 +1,44 @@
+[package]
+name = "agent-council"
+version = "3.0.0"
+edition = "2021"
+default-run = "AgentCouncil"
+
+[[bin]]
+name = "AgentCouncil"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors", "limit"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.38", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+reqwest = { version = "0.13", features = ["json"] }
+futures-util = "0.3"
+async-stream = "0.3"
+which = "8"
+rfd = "0.17"
+open = "5"
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"
+fs2 = "0.4"
+regex = "1"
+aes-gcm = "0.10"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_JobObjects", "Win32_System_Threading", "Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
