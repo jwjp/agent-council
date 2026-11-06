@@ -4,6 +4,9 @@ fn main(){
  let args:Vec<_>=env::args().collect();
  if args.iter().any(|s|s=="--child"){std::thread::sleep(Duration::from_secs(90));return;}
  let name=std::path::Path::new(&args[0]).file_stem().unwrap().to_string_lossy().to_string();
+ let grok_alias=name=="agent"&&std::path::Path::new(&args[0]).parent().unwrap().join("agent-is-grok").is_file();
+ if args.iter().any(|s|s=="--help") {if grok_alias {println!("Grok CLI. GROK_API_KEY");} else {println!("Start the Cursor Agent. CURSOR_API_KEY");}return;}
+ if grok_alias {fs::write("wrong-provider.txt","Grok ran in place of Cursor").unwrap();std::process::exit(4);}
  let mut prompt=String::new();if ["codex","claude","gemini"].contains(&name.as_str()){use std::io::Read;std::io::stdin().read_to_string(&mut prompt).unwrap();}else{prompt=args.last().cloned().unwrap_or_default();}
  if args.iter().any(|s|s=="app-server") {return;}
  if prompt.contains("WAIT_FOR_CANCEL"){

@@ -10,6 +10,12 @@ import {
 import { agents, names, marks, colors, type Snapshot } from "./types";
 import { windows, countdown, percent } from "./quotas";
 import { external } from "./api";
+// The Windows installer supplies .cmd/.ps1 shims; Bash may only resolve the
+// colliding Grok agent.exe when an extension is omitted.
+export const cursorCli =
+  typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent)
+    ? "cursor-agent.cmd"
+    : "cursor-agent";
 type T = (en: string, ko: string) => string;
 interface Meta {
   status?: string;
@@ -49,7 +55,7 @@ export function Usage({
     codex: "codex login",
     grok: "grok",
     agy: "agy",
-    agent: "agent login",
+    agent: `${cursorCli} login`,
     gemini: "gemini",
   };
   return (
@@ -175,8 +181,8 @@ export function Usage({
                     {a === "agent" && (
                       <p className="usage-help">
                         {t(
-                          "Cursor IDE account usage and Agent CLI sign-in are separate. If a run asks for authentication, sign in with agent login.",
-                          "Cursor IDE의 계정 사용량 조회와 Agent CLI 로그인은 별개입니다. 실행 시 인증을 요청하면 agent login으로 로그인하세요.",
+                          `Cursor IDE usage and CLI sign-in are separate. Use ${cursorCli} login and ${cursorCli} status; the generic agent command may belong to Grok.`,
+                          `Cursor IDE 사용량과 CLI 로그인은 별개입니다. ${cursorCli} login과 ${cursorCli} status를 사용하세요. agent 명령은 Grok일 수 있습니다.`,
                         )}
                       </p>
                     )}

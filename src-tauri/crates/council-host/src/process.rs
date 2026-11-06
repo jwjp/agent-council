@@ -1,8 +1,11 @@
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::{
+    collections::HashMap,
+    io::Read,
     path::{Path, PathBuf},
     process::Stdio,
+    sync::{Mutex, OnceLock},
     time::{Duration, Instant},
 };
 use tokio::{
@@ -21,12 +24,36 @@ pub fn hidden(command: &mut Command) -> &mut Command {
 }
 
 pub fn launcher(name: &str) -> Result<(PathBuf, Vec<String>)> {
-    let executable = which::which_in(
+    launcher_in(
         name,
-        Some(crate::platform::cli_path()),
-        std::env::current_dir()?,
+        &crate::platform::cli_path(),
+        &std::env::current_dir()?,
     )
-    .with_context(|| format!("CLI not found on PATH: {name}"))?;
+}
+
+fn launcher_in(name: &str, path: &std::ffi::OsStr, cwd: &Path) -> Result<(PathBuf, Vec<String>)> {
+    // Grok also installs `agent.exe`. Its login is unrelated to Cursor's.
+    if name == "agent" {
+        if let Ok(executable) = which::which_in("cursor-agent", Some(path), cwd) {
+            return resolve_launcher(name, executable);
+        }
+    }
+    let executable = which::which_in(name, Some(path), cwd)
+        .with_context(|| format!("CLI not found on PATH: {name}"))?;
+    let launch = resolve_launcher(name, executable.clone())?;
+    // Supported Windows Node layouts are explicitly Cursor-specific. A generic
+    // native `agent` must identify itself before we send any project prompt.
+    if name == "agent" && launch.1.is_empty() {
+        anyhow::ensure!(
+            cursor_identity(&launch.0),
+            "The agent command at {} could not be identified as Cursor (Grok also uses this name). Use Cursor's cursor-agent command; check cursor-agent status and sign in with cursor-agent login.",
+            executable.display()
+        );
+    }
+    Ok(launch)
+}
+
+fn resolve_launcher(name: &str, executable: PathBuf) -> Result<(PathBuf, Vec<String>)> {
     #[cfg(windows)]
     if executable
         .extension()
@@ -71,6 +98,89 @@ pub fn launcher(name: &str) -> Result<(PathBuf, Vec<String>)> {
         );
     }
     Ok((executable, vec![]))
+}
+
+fn cursor_identity(program: &Path) -> bool {
+    type Entry = (Option<std::time::SystemTime>, u64, bool);
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, Entry>>> = OnceLock::new();
+    let Ok(meta) = program.metadata() else {
+        return false;
+    };
+    let stamp = (meta.modified().ok(), meta.len());
+    let mut cache = CACHE.get_or_init(Default::default).lock().unwrap();
+    if let Some((modified, len, result)) = cache.get(program) {
+        if (*modified, *len) == stamp {
+            return *result;
+        }
+    }
+    let result = probe_cursor_identity(program);
+    if cache.len() >= 64 {
+        cache.clear();
+    }
+    cache.insert(program.to_path_buf(), (stamp.0, stamp.1, result));
+    result
+}
+
+fn probe_cursor_identity(program: &Path) -> bool {
+    // A bounded, no-model help probe, cached by file identity metadata. Never
+    // probe login or run a project request merely to discover a provider.
+    let mut command = std::process::Command::new(program);
+    command
+        .arg("--help")
+        .env("PATH", crate::platform::cli_path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let Ok(mut child) = command.spawn() else {
+        return false;
+    };
+    #[cfg(windows)]
+    let guard = {
+        use std::os::windows::io::AsRawHandle;
+        match JobGuard::assign(child.as_raw_handle()) {
+            Ok(guard) => guard,
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        }
+    };
+    #[cfg(unix)]
+    let guard = ProcessGroup(child.id() as i32);
+    let stdout = child.stdout.take().unwrap();
+    let output = std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = stdout.take(65536).read_to_string(&mut text);
+        text
+    });
+    let start = Instant::now();
+    let success = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status.success(),
+            Ok(None) if start.elapsed() < Duration::from_secs(3) => {
+                std::thread::sleep(Duration::from_millis(20))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break false;
+            }
+        }
+    };
+    drop(guard);
+    let text = output.join().unwrap_or_default().to_ascii_lowercase();
+    success && text.contains("cursor agent") && text.contains("cursor_api_key")
 }
 pub fn args(name: &str, prompt: &str, implement: bool, full: bool) -> Vec<String> {
     let mut args: Vec<&str> = match name {
@@ -528,6 +638,57 @@ unsafe impl Send for JobGuard {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cursor_alias_takes_priority_over_generic_agent_on_path() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let grok = root.join("grok");
+        let cursor = root.join("cursor");
+        std::fs::create_dir_all(&grok).unwrap();
+        std::fs::create_dir_all(&cursor).unwrap();
+        let suffix = if cfg!(windows) { ".exe" } else { "" };
+        let generic = grok.join(format!("agent{suffix}"));
+        let alias = cursor.join(format!("cursor-agent{suffix}"));
+        for file in [&generic, &alias] {
+            std::fs::write(file, "fixture executable").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o700)).unwrap();
+            }
+        }
+        let path = std::env::join_paths([&grok, &cursor]).unwrap();
+        let selected = launcher_in("agent", &path, &root).unwrap().0;
+        assert_eq!(
+            selected.canonicalize().unwrap(),
+            alias.canonicalize().unwrap()
+        );
+        assert!(root
+            .canonicalize()
+            .unwrap()
+            .starts_with(std::env::temp_dir().canonicalize().unwrap()));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn generic_agent_help_must_identify_cursor_and_does_not_run_models() {
+        // The Rust test runner's --help is deliberately unrelated to Cursor.
+        // Install it under the colliding name, with no Cursor-specific alias.
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir(&root).unwrap();
+        let file = root.join(if cfg!(windows) { "agent.exe" } else { "agent" });
+        std::fs::copy(std::env::current_exe().unwrap(), &file).unwrap();
+        let error = launcher_in("agent", root.as_os_str(), &root)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("could not be identified as Cursor"),
+            "{error}"
+        );
+        assert!(root
+            .canonicalize()
+            .unwrap()
+            .starts_with(std::env::temp_dir().canonicalize().unwrap()));
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn notes_keep_complete_sentences_and_markdown_links() {
         let text = format!(

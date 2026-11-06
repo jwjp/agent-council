@@ -31,11 +31,23 @@ try {
     { encoding: "utf8" },
   );
   assert.equal(compile.status, 0, compile.stderr);
-  for (const name of ["claude", "codex", "grok", "agy", "agent", "gemini"]) {
+  for (const name of [
+    "claude",
+    "codex",
+    "grok",
+    "agy",
+    "agent",
+    "cursor-agent",
+    "gemini",
+  ]) {
     const destination = join(bin, name + exeSuffix);
     copyFileSync(join(bin, "fixture" + exeSuffix), destination);
     if (process.platform !== "win32") chmodSync(destination, 0o700);
   }
+  writeFileSync(
+    join(bin, "agent-is-grok"),
+    "generic command collision fixture",
+  );
   writeFileSync(
     join(root, "settings.json"),
     JSON.stringify({
@@ -179,6 +191,10 @@ try {
     "/settings",
     { ...initial.settings, coder: null, reviewers: ["codex"] },
     "PUT",
+  );
+  assert.ok(
+    !existsSync(join(project, "wrong-provider.txt")),
+    "Cursor must not execute Grok's generic agent command",
   );
   const reviewOnly = await request("/jobs", {
     request: "Inspect without changes.",

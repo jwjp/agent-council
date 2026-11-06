@@ -161,7 +161,15 @@ try {
     { encoding: "utf8" },
   );
   assert.equal(built.status, 0, built.stderr);
-  for (const name of ["claude", "codex", "grok", "agy", "agent", "gemini"]) {
+  for (const name of [
+    "claude",
+    "codex",
+    "grok",
+    "agy",
+    "agent",
+    "cursor-agent",
+    "gemini",
+  ]) {
     const target = join(bin, name + exeSuffix);
     copyFileSync(join(bin, "fixture" + exeSuffix), target);
     if (process.platform !== "win32") chmodSync(target, 0o700);

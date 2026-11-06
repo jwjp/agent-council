@@ -63,7 +63,15 @@ try {
     { encoding: "utf8" },
   );
   assert.equal(compile.status, 0, compile.stderr);
-  for (const name of ["claude", "codex", "grok", "agy", "agent", "gemini"])
+  for (const name of [
+    "claude",
+    "codex",
+    "grok",
+    "agy",
+    "agent",
+    "cursor-agent",
+    "gemini",
+  ])
     copyFileSync(join(bin, "fixture.exe"), join(bin, name + ".exe"));
   try {
     await fetch("http://127.0.0.1:1420");

@@ -30,11 +30,18 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 - **Eligibility:** no project-level license has been chosen; the Orca MIT notice is not this project's license. No signing application/approval is recorded. OSSign was not accepting new applications at the last check and has a six-month activity requirement. Recheck external conditions before acting.
 - **Release automation:** tag/manual signed release workflow is a proposed next implementation, not an existing feature. Current workflow verifies code; previous release artifacts were built/published separately. Do not claim source-to-signed-binary provenance yet.
 - **Microsoft Store:** owner reports Partner Center registration complete. Store-hosted MSIX is a recommended candidate, not a finalized/implemented channel. Current NSIS configuration and GitHub EXE replacement updater are not MSIX-ready. See [STORE_DISTRIBUTION.md](STORE_DISTRIBUTION.md) for source-backed costs, packaging and isolated compatibility trials. Product identity/reservation, packaged CLI/auth/persistence/lifecycle tests and certification remain pending.
-- **Mobile preview:** the browser companion is published as a prerelease. The owner enabled Serve and the isolated 8443 HTTPS/browser test passed. No production gateway or Serve route was left enabled; setup/pairing remains an explicit host action. The app never exposes the local runtime/Vite or changes tailnet settings automatically. Actual phone-to-host reachability remains the next device check.
+- **Mobile preview:** the browser companion is published as a prerelease. The owner enabled Serve and the isolated 8443 HTTPS/browser test passed. The owner subsequently reports that connection works; phone OS/browser details are unspecified. Setup/pairing remains an explicit host action. The app never exposes the local runtime/Vite or changes tailnet settings automatically.
 - **Cross-platform direction:** owner authorized implementation. Shared wire types/portable host boundary, native paths, Unix CLI process groups, macOS CI and the paired web preview are implemented. Next are actual phone/browser and Mac native/provider validation, then Tauri mobile. Stable v3.1.0 has no companion support; the separate beta does.
 - **Hardware constraint (2026-11-06):** owner has no MacBook. Continue hosted macOS build/fixture checks; do not block Windows-host/mobile-web pairing on purchasing hardware. Native Mac UI/IME, real provider sign-ins/Keychain and distribution tests need an appropriate remote Mac environment or a Mac beta tester later. No rental, account sign-in or paid service is authorized by this clarification.
 
 ## Recent tasks — keep the latest five
+
+### 2026-11-06 — Cursor/Grok CLI collision diagnosis and source fix
+
+- Owner reports successful companion connection, then recurring Cursor authentication failures. Explicit local checks found both Cursor wrappers and Grok's `agent.exe`; Grok reports `1.0.77`, Cursor reports `2026.11.05-86047df`, and Cursor's own status is `Not logged in`. This proves current CLI collision/missing Cursor sign-in, not repeated historical session expiry. IDE quota access remains independent.
+- Prefer the dedicated Cursor alias; guard generic native `agent` with a bounded/cached no-model identity probe. Corrected Windows UI instructions/copy command to `cursor-agent.cmd`; documented explicit PowerShell/Bash paths. No account/login, PATH, credential, existing runtime or release assets were changed.
+- Added alias-priority/unrelated-binary regressions and a fake Grok generic command that must not receive Cursor work. Fixtures carry their own Cursor-specific alias. Locally passed: 26 Rust tests, 8 frontend tests/build, rebuilt headless-host runtime integration across all six adapters and 18 desktop UI checks. Windows/macOS CI follow-up is pending.
+- Source remains on `feat/mobile-companion`; version/published beta.1 bytes are unchanged. Next: owner signs in through the explicit Cursor wrapper and checks its status, then retries the current app. Source/UI fixes are ready for the next build; no live Cursor model request was made.
 
 ### 2026-11-06 — Mobile web companion preview published
 
@@ -67,11 +74,3 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 - Audited current configuration, updater and data-path sources; documented external CLI/auth access, package updates, detached engine lifecycle and migration as unverified compatibility work. Added `STORE_DISTRIBUTION.md` and linked the assessment from build guidance and README.
 - Verification: local Markdown links, agent entry points, unchanged app version and `git diff --check` passed. No app build, MSIX installation, certificate change, account action or Store submission was performed.
 - Next: obtain Partner Center product identity, then implement/test an isolated packaging trial if requested; do not present the assessment as Store certification.
-
-### 2026-11-06 — Shared agent instructions and build/signing guidance
-
-- Request: assess Gemini's development/release advice and make future agents maintain shared context.
-- Added canonical `AGENTS.md`, Claude/Gemini entry points, this status file and `BUILD_AND_SIGNING.md`; linked them from README.
-- Recorded the distinction between optional local signing, recommended public-release signing, initial provider approval and per-release human approval. Kept app version and runtime behavior unchanged.
-- Verification: local Markdown link/entry-point consistency and `git diff --check` passed. No application rebuild or model/API execution was needed for these documentation changes.
-- Next step if signing implementation is requested: resolve the project license with the owner, prepare accurate signing/privacy policies and a provenance-preserving release workflow, then apply/configure provider access. Do not claim approval or add signing secrets speculatively.

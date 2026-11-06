@@ -68,7 +68,7 @@ import {
   quotaLabel,
 } from "./quotas";
 import { FilePreviewProvider, useFileLink } from "./file-preview";
-import { Usage } from "./usage-panel";
+import { Usage, cursorCli } from "./usage-panel";
 
 type Translate = (en: string, ko: string) => string;
 function AgentMark({
@@ -123,8 +123,8 @@ function AgentProblem({
       {auth && agent === "agent" && (
         <p>
           {t(
-            "Cursor IDE usage can be available while Agent CLI is signed out. Run agent login in a terminal, then retry your request.",
-            "Cursor IDE 사용량을 볼 수 있어도 Agent CLI는 로그아웃 상태일 수 있습니다. 터미널에서 agent login으로 로그인한 뒤 요청을 다시 보내세요.",
+            `Cursor IDE usage and CLI sign-in are separate. Run ${cursorCli} login, then ${cursorCli} status, and retry. The generic agent command may belong to Grok.`,
+            `Cursor IDE 사용량과 CLI 로그인은 별개입니다. ${cursorCli} login으로 로그인하고 ${cursorCli} status로 확인한 뒤 다시 요청하세요. agent 명령은 Grok일 수 있습니다.`,
           )}
         </p>
       )}

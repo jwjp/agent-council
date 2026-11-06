@@ -33,7 +33,15 @@ try {
     { encoding: "utf8" },
   );
   assert.equal(compile.status, 0, compile.stderr);
-  for (const a of ["claude", "codex", "agy", "grok", "agent", "gemini"])
+  for (const a of [
+    "claude",
+    "codex",
+    "agy",
+    "grok",
+    "agent",
+    "cursor-agent",
+    "gemini",
+  ])
     copyFileSync(join(bin, "fixture.exe"), join(bin, a + ".exe"));
   writeFileSync(
     join(root, "settings.json"),
