@@ -1,4 +1,4 @@
-import { chromium, expect } from "@playwright/test";
+import { chromium, webkit, expect } from "@playwright/test";
 import { spawn, spawnSync } from "node:child_process";
 import {
   mkdtempSync,
@@ -7,9 +7,10 @@ import {
   readFileSync,
   existsSync,
   copyFileSync,
+  chmodSync,
   rmSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, delimiter } from "node:path";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
 import assert from "node:assert/strict";
@@ -37,8 +38,9 @@ const env = {
   AGENT_COUNCIL_AUTH_HOME: root,
   CLAUDE_CONFIG_DIR: join(root, ".claude"),
   GROK_HOME: join(root, ".grok"),
-  PATH: bin + ";" + process.env.PATH,
+  PATH: bin + delimiter + process.env.PATH,
 };
+const suffix = process.platform === "win32" ? ".exe" : "";
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const errors = [];
 let web, browser, runtime, page, phone;
@@ -59,7 +61,7 @@ const free = () =>
 try {
   const compile = spawnSync(
     "rustc",
-    ["tests/fixture_agent.rs", "-o", join(bin, "fixture.exe")],
+    ["tests/fixture_agent.rs", "-o", join(bin, "fixture" + suffix)],
     { encoding: "utf8" },
   );
   assert.equal(compile.status, 0, compile.stderr);
@@ -71,8 +73,11 @@ try {
     "agent",
     "cursor-agent",
     "gemini",
-  ])
-    copyFileSync(join(bin, "fixture.exe"), join(bin, name + ".exe"));
+  ]) {
+    copyFileSync(join(bin, "fixture" + suffix), join(bin, name + suffix));
+    if (process.platform !== "win32")
+      chmodSync(join(bin, name + suffix), 0o755);
+  }
   try {
     await fetch("http://127.0.0.1:1420");
     throw Error("Port 1420 is already in use");
@@ -90,7 +95,10 @@ try {
     } catch {}
     await pause(100);
   }
-  browser = await chromium.launch({ channel: "msedge", headless: true });
+  browser =
+    process.env.COUNCIL_UI_BROWSER === "webkit"
+      ? await webkit.launch({ headless: true })
+      : await chromium.launch({ channel: "msedge", headless: true });
   page = await browser.newPage({ viewport: { width: 1180, height: 900 } });
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("http://127.0.0.1:1420");
@@ -167,6 +175,42 @@ try {
       errors.push(m.text());
   });
   await phone.goto(invite.url);
+  const manifestResponse = await context.request.get(
+    origin + "/companion/manifest.webmanifest",
+  );
+  assert.equal(manifestResponse.status(), 200);
+  assert.match(
+    manifestResponse.headers()["content-type"],
+    /application\/manifest\+json/,
+  );
+  const manifest = await manifestResponse.json();
+  assert.equal(manifest.start_url, "/companion/");
+  assert.equal(manifest.id, "/companion/");
+  assert.equal(manifest.display, "standalone");
+  for (const icon of manifest.icons) {
+    const r = await context.request.get(origin + icon.src);
+    assert.equal(r.status(), 200);
+    assert.match(r.headers()["content-type"], /image\/png/);
+  }
+  assert.match(
+    (await context.request.get(origin + "/companion/")).headers()[
+      "content-security-policy"
+    ],
+    /manifest-src 'self'/,
+  );
+  await phone
+    .getByRole("button", { name: "Add to Home Screen", exact: true })
+    .click();
+  await expect(
+    phone.getByRole("dialog", { name: "Install companion" }),
+  ).toBeVisible();
+  await phone.screenshot({ path: ".runtime-test/mobile-install-guide.png" });
+  await phone
+    .getByRole("button", { name: "Close install guide", exact: true })
+    .click();
+  pass(
+    "Home Screen manifest/icons use a stable non-secret launch URL and the install guide opens in-window",
+  );
   await expect(
     phone.getByRole("button", { name: "Request connection", exact: true }),
   ).toBeVisible();
@@ -229,6 +273,81 @@ try {
   pass(
     "Korean composition, Shift+Enter, focus/language changes and private drafts survive reload",
   );
+  const offlineText = "오프라인 입력을 잃지 않습니다";
+  await context.setOffline(true);
+  await expect(
+    phone.getByRole("button", { name: "Send message", exact: true }),
+  ).toBeDisabled();
+  await input.fill(offlineText);
+  await input.press("Enter");
+  await expect(input).toHaveValue(offlineText);
+  assert.equal((await local("/state")).messages.length, 0);
+  const backup = JSON.parse(
+    await phone.evaluate(() =>
+      sessionStorage.getItem("council-companion-draft-v1"),
+    ),
+  );
+  assert.equal(backup.text, offlineText);
+  const blockDraft = (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Fixture draft connection interrupted" }),
+    });
+  await phone.route("**/companion/v1/draft", blockDraft);
+  await context.setOffline(false);
+  await phone.reload();
+  await expect(input).toHaveValue(offlineText, { timeout: 10000 });
+  await phone.unroute("**/companion/v1/draft", blockDraft);
+  await phone.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect
+    .poll(() =>
+      phone.evaluate(() =>
+        fetch("/companion/v1/state")
+          .then((r) => r.json())
+          .then((s) => s.draft),
+      ),
+    )
+    .toBe(offlineText);
+  await expect(phone.getByLabel("Draft status", { exact: true })).toContainText(
+    "PC에 저장",
+  );
+  assert.equal(
+    await phone.evaluate(() =>
+      sessionStorage.getItem("council-companion-draft-v1"),
+    ),
+    null,
+  );
+  pass(
+    "Offline input survives a reload with interrupted saves, then syncs without sending a job",
+  );
+  let held = false,
+    release;
+  let captured;
+  const arrived = new Promise((r) => (captured = r));
+  const holdState = async (route) => {
+    if (held) {
+      await route.continue();
+      return;
+    }
+    held = true;
+    const response = await route.fetch();
+    captured();
+    await new Promise((r) => (release = r));
+    await route.fulfill({ response });
+  };
+  await phone.route("**/companion/v1/state", holdState);
+  await phone.evaluate(() => window.dispatchEvent(new Event("online")));
+  await arrived;
+  await input.fill("새 입력이 늦은 화면 갱신보다 우선합니다");
+  await expect(phone.getByLabel("Draft status", { exact: true })).toContainText(
+    "PC에 저장",
+  );
+  release();
+  await pause(500);
+  await expect(input).toHaveValue("새 입력이 늦은 화면 갱신보다 우선합니다");
+  await phone.unroute("**/companion/v1/state", holdState);
+  pass("A delayed pre-edit snapshot cannot overwrite newer acknowledged input");
   await input.fill("IMPLEMENT_REVIEW_FIX");
   await input.press("Enter");
   await expect(
@@ -348,6 +467,43 @@ try {
   pass(
     "Leaving the phone does not cancel work; reconnection resumes without duplicate requests",
   );
+  const loseJobAck = async (route) => {
+    await route.fetch();
+    await route.abort("failed");
+  };
+  await phone.route("**/companion/v1/jobs", loseJobAck);
+  await input.fill("PHONE_ACK_RECOVERY");
+  await phone
+    .getByRole("button", { name: "Send message", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () =>
+        (await local("/state")).messages.filter(
+          (m) => m.role === "You" && m.text === "PHONE_ACK_RECOVERY",
+        ).length,
+      { timeout: 15000 },
+    )
+    .toBe(1);
+  await expect(input).toHaveValue("", { timeout: 15000 });
+  assert.equal(
+    await phone.evaluate(() =>
+      sessionStorage.getItem("council-companion-draft-v1"),
+    ),
+    null,
+  );
+  await phone.unroute("**/companion/v1/jobs", loseJobAck);
+  await phone.reload();
+  await expect(input).toHaveValue("", { timeout: 10000 });
+  assert.equal(
+    (await local("/state")).messages.filter(
+      (m) => m.role === "You" && m.text === "PHONE_ACK_RECOVERY",
+    ).length,
+    1,
+  );
+  pass(
+    "A lost job acknowledgement is confirmed from scoped host state without restoring or repeating submitted text",
+  );
   await page
     .locator(".phone-device")
     .filter({ hasText: "Pocket review" })
@@ -357,6 +513,51 @@ try {
     phone.getByRole("heading", { name: "어디서든 작업을 이어가세요" }),
   ).toBeVisible({ timeout: 10000 });
   pass("Host revocation removes access from a live phone session");
+  assert.equal(
+    await phone.evaluate(() =>
+      sessionStorage.getItem("council-companion-draft-v1"),
+    ),
+    null,
+  );
+  const homeContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  await homeContext.addInitScript(() =>
+    Object.defineProperty(navigator, "standalone", { value: true }),
+  );
+  const home = await homeContext.newPage();
+  home.on("pageerror", (e) => errors.push(e.message));
+  await home.goto(origin + "/companion/");
+  await expect(home.getByLabel("Pairing link", { exact: true })).toBeVisible();
+  await expect(
+    home.getByRole("button", { name: "Add to Home Screen", exact: true }),
+  ).toHaveCount(0);
+  const homeInvite = await local("/companion/invitations", {
+    allow_work: true,
+  });
+  await home.getByLabel("Pairing link", { exact: true }).fill(homeInvite.url);
+  await home.getByLabel("Device name", { exact: true }).fill("Home Screen");
+  await home
+    .getByRole("button", { name: "Request connection", exact: true })
+    .click();
+  await expect(
+    home.getByText("Waiting for host approval", { exact: true }),
+  ).toBeVisible();
+  await local("/companion/invitations/" + homeInvite.id + "/approve", {});
+  await expect(home.getByText("Connected", { exact: true })).toBeVisible({
+    timeout: 10000,
+  });
+  await home.screenshot({ path: ".runtime-test/mobile-home-screen.png" });
+  await home
+    .getByRole("button", { name: "Disconnect this device", exact: true })
+    .click();
+  await expect(home.getByLabel("Pairing link", { exact: true })).toBeVisible();
+  await homeContext.close();
+  pass(
+    "A fresh standalone context can paste a new pairing link, get host approval and disconnect",
+  );
   assert.deepEqual(errors, []);
   pass("No browser exceptions or companion CSP violations");
   console.log(`${checks} companion UI checks passed`);

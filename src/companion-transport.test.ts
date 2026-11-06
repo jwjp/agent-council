@@ -6,6 +6,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.resetModules();
 });
+it("browser pairing accepts a copied link only from the current host", async () => {
+  const t = await transport(() => {}, false),
+    code = "a".repeat(64);
+  expect(
+    t.browserPairCode(
+      "https://pc.example/companion/#pair=" + code,
+      "https://pc.example",
+    ),
+  ).toBe(code);
+  expect(t.browserPairCode(code, "https://pc.example")).toBe(code);
+  for (const url of [
+    "https://other.example/companion/#pair=" + code,
+    "https://user@pc.example/companion/#pair=" + code,
+    "https://pc.example/companion/?secret=bad#pair=" + code,
+  ])
+    expect(() => t.browserPairCode(url, "https://pc.example")).toThrow();
+});
 async function transport(
   handler: (command: string, args: Record<string, unknown>) => unknown,
   native = true,

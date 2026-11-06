@@ -38,3 +38,10 @@ jobs:
         if: runner.os == 'Windows'
       - run: node tests/companion-ui.mjs
         if: runner.os == 'Windows'
+      - run: npx playwright install webkit
+        if: runner.os == 'macOS'
+      - name: Test companion with WebKit on macOS
+        if: runner.os == 'macOS'
+        run: node tests/companion-ui.mjs
+        env:
+          COUNCIL_UI_BROWSER: webkit

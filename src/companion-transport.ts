@@ -29,26 +29,60 @@ export async function call<T>(
   body?: unknown,
   method = body === undefined ? "GET" : "POST",
   keepalive = false,
+  signal?: AbortSignal,
 ): Promise<T> {
   if (nativeCompanion)
     return native<T>("mobile_request", { path, method, body: body ?? null });
-  const response = await fetch(`/companion/v1${path}`, {
-    method,
-    credentials: "same-origin",
-    headers: body === undefined ? {} : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    keepalive,
-    signal: keepalive ? undefined : AbortSignal.timeout(20000),
-  });
-  const value = await response.json();
-  if (!response.ok)
-    throw new ApiError(response.status, value.error || "Request failed");
-  return value as T;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = keepalive ? undefined : setTimeout(abort, 20000);
+  let response: Response;
+  try {
+    response = await fetch(`/companion/v1${path}`, {
+      method,
+      credentials: "same-origin",
+      headers: body === undefined ? {} : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      keepalive,
+      signal: controller.signal,
+    });
+    const value = await response.json();
+    if (!response.ok)
+      throw new ApiError(response.status, value.error || "Request failed");
+    return value as T;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+  }
 }
 export function pair(linkOrCode: string, name: string): Promise<unknown> {
   return nativeCompanion
     ? native("mobile_pair", { link: linkOrCode, name })
-    : call("/pair", { code: linkOrCode, name });
+    : Promise.resolve().then(() =>
+        call("/pair", {
+          code: browserPairCode(linkOrCode, location.origin),
+          name,
+        }),
+      );
+}
+export function browserPairCode(value: string, origin: string): string {
+  const code = value.trim();
+  if (/^[a-f\d]{64}$/i.test(code)) return code;
+  try {
+    const url = new URL(code);
+    if (
+      url.origin === origin &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      ["/companion", "/companion/"].includes(url.pathname) &&
+      /^#pair=[a-f\d]{64}$/i.test(url.hash)
+    )
+      return url.hash.slice(6);
+  } catch {}
+  throw new ApiError(400, "Paste a fresh companion pairing link from this PC.");
 }
 export function forget(): Promise<void> {
   return native("mobile_forget", {});

@@ -13,6 +13,8 @@ import {
   X,
   Unplug,
   Globe,
+  Share,
+  PlusSquare,
 } from "lucide-react";
 import { MarkdownContent } from "./markdown";
 import { compactActivity, snapshotActivity } from "./companion-state";
@@ -26,6 +28,7 @@ import {
   countdown,
 } from "./quotas";
 import "./companion.css";
+import { CompanionDraft, draftFits, tabStorage } from "./companion-draft";
 
 interface Session {
   id: string;
@@ -56,9 +59,13 @@ if (location.hash)
   history.replaceState(null, "", location.pathname + location.search);
 
 function CompanionApp() {
-  const [ko, setKo] = useState(
-      () => localStorage.getItem("council-phone-language") === "ko",
-    ),
+  const [ko, setKo] = useState(() => {
+      try {
+        return localStorage.getItem("council-phone-language") === "ko";
+      } catch {
+        return false;
+      }
+    }),
     [session, setSession] = useState<Session | null>(null);
   const [snapshot, setSnapshot] = useState<PhoneState | null>(null),
     [phase, setPhase] = useState<"loading" | "pair" | "pending" | "ready">(
@@ -83,27 +90,148 @@ function CompanionApp() {
     start_line: number;
     truncated: boolean;
   } | null>(null);
-  const dirty = useRef(false),
-    currentText = useRef(""),
+  const draft = useRef<CompanionDraft | null>(null),
+    refreshIssued = useRef(0),
+    refreshApplied = useRef(0),
     cursor = useRef(0),
     currentJob = useRef<string | undefined>(undefined),
     composer = useRef<HTMLTextAreaElement>(null),
     bottom = useRef<HTMLDivElement>(null);
   const follow = useRef(true),
-    pending = useRef<{ request_id: string; request: string } | null>(null),
     draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null),
     draftWrite = useRef<Promise<void>>(Promise.resolve());
+  const [installHelp, setInstallHelp] = useState(false);
+  const [foreground, setForeground] = useState(
+    document.visibilityState !== "hidden",
+  );
+  const [network, setNetwork] = useState(navigator.onLine);
+  const [draftStatus, setDraftStatus] = useState("saved");
+  const queuedDraft = useRef<{
+    model: CompanionDraft;
+    revision: number;
+    promise: Promise<void>;
+  } | null>(null);
+  const refreshAbort = useRef<AbortController | null>(null);
+  const standalone = () =>
+    matchMedia("(display-mode: standalone)").matches ||
+    !!(navigator as Navigator & { standalone?: boolean }).standalone;
+  const [installed, setInstalled] = useState(standalone);
   const t = useCallback((en: string, kor: string) => (ko ? kor : en), [ko]);
-  const handleError = useCallback((e: unknown) => {
-    if (e instanceof ApiError && e.status === 401) {
-      setSession(null);
-      setSnapshot(null);
-      setPhase("pair");
-    }
-    setError(String(e instanceof Error ? e.message : e));
+  const showDraft = useCallback((saving = false) => {
+    const model = draft.current;
+    if (!model) return;
+    setText(model.text);
+    setDraftStatus(
+      !draftFits(model.text)
+        ? "long"
+        : saving
+          ? "saving"
+          : model.dirty
+            ? model.recovered
+              ? "restored"
+              : model.backedUp
+                ? "local"
+                : "memory"
+            : "saved",
+    );
   }, []);
+  const acceptSession = useCallback(
+    (s: Session) => {
+      if (s.protocol !== "companion-v1")
+        throw Error("Update this companion to connect.");
+      if (draft.current?.id !== s.id) {
+        draft.current?.discard();
+        draft.current = new CompanionDraft(
+          s.id,
+          nativeCompanion ? null : tabStorage(),
+        );
+        cursor.current = 0;
+        currentJob.current = undefined;
+        refreshApplied.current = 0;
+        showDraft();
+      }
+      setSession(s);
+      setPhase("ready");
+      setError("");
+    },
+    [showDraft],
+  );
+  const clearSession = useCallback(() => {
+    draft.current?.discard();
+    draft.current = null;
+    clearTimeout(draftTimer.current || undefined);
+    setText("");
+    setSession(null);
+    setSnapshot(null);
+    setOnline(false);
+    setPreview(null);
+    setUsage(false);
+    setPhase("pair");
+  }, []);
+  const handleError = useCallback(
+    (e: unknown) => {
+      if (e instanceof ApiError && e.status === 401) clearSession();
+      setError(String(e instanceof Error ? e.message : e));
+    },
+    [clearSession],
+  );
+  const persist = useCallback(
+    (value: string, revision = draft.current?.revision): Promise<void> => {
+      const model = draft.current;
+      if (!model || revision === undefined || !draftFits(value))
+        return Promise.resolve();
+      const queued = queuedDraft.current;
+      if (queued?.model === model && queued.revision === revision)
+        return queued.promise;
+      showDraft(true);
+      const write = draftWrite.current
+        .catch(() => {})
+        .then(async () => {
+          if (draft.current !== model) return;
+          await call<void>("/draft", { text: value }, "PUT");
+          if (draft.current === model) {
+            model.saved(revision);
+            showDraft();
+          }
+        });
+      draftWrite.current = write;
+      queuedDraft.current = { model, revision, promise: write };
+      void write
+        .finally(() => {
+          if (queuedDraft.current?.promise === write)
+            queuedDraft.current = null;
+        })
+        .catch(() => {});
+      return write;
+    },
+    [showDraft],
+  );
   const refresh = useCallback(async () => {
-    const state = await call<PhoneState>("/state");
+    const model = draft.current;
+    if (!model) return null;
+    const revision = model.revision,
+      sequence = ++refreshIssued.current;
+    let state: PhoneState;
+    try {
+      state = await call<PhoneState>(
+        "/state",
+        undefined,
+        "GET",
+        false,
+        refreshAbort.current?.signal,
+      );
+    } catch (e) {
+      if (draft.current !== model) return null;
+      throw e;
+    }
+    if (draft.current !== model) return null;
+    if (sequence < refreshApplied.current) return state;
+    if (state.device.id !== model.id)
+      throw new ApiError(
+        401,
+        "The paired device changed. Reconnect to continue.",
+      );
+    refreshApplied.current = sequence;
     setSnapshot((previous) => ({
       ...state,
       activity: snapshotActivity(
@@ -115,14 +243,19 @@ function CompanionApp() {
     setSession(state.device);
     currentJob.current = state.job?.id;
     cursor.current = Math.max(cursor.current, state.cursor);
-    if (!dirty.current) {
-      setText(state.draft);
-      currentText.current = state.draft;
-    }
+    model.snapshot(state.draft, state.job?.request_id, revision);
+    showDraft();
     setOnline(true);
     setError("");
+    if (model.dirty && draftFits(model.text))
+      void persist(model.text).catch((e) => {
+        if (draft.current === model) {
+          showDraft();
+          handleError(e);
+        }
+      });
     return state;
-  }, []);
+  }, [handleError, persist, showDraft]);
   useEffect(() => {
     let alive = true;
     if (initialCode) {
@@ -132,10 +265,7 @@ function CompanionApp() {
     void call<Session>("/session")
       .then((s) => {
         if (alive) {
-          if (s.protocol !== "companion-v1")
-            throw Error("Update this companion to connect.");
-          setSession(s);
-          setPhase("ready");
+          acceptSession(s);
         }
       })
       .catch(async (e) => {
@@ -149,8 +279,7 @@ function CompanionApp() {
             if (alive) {
               if (pending.status === "pending") setPhase("pending");
               else {
-                setSession(pending);
-                setPhase("ready");
+                acceptSession(pending);
               }
             }
             return;
@@ -164,41 +293,50 @@ function CompanionApp() {
     return () => {
       alive = false;
     };
-  }, [handleError]);
+  }, [handleError, acceptSession]);
   useEffect(() => {
     if (phase !== "pending") return;
     let alive = true;
-    const poll = () =>
-      void call<Session & { status?: string }>("/pair/complete", {})
-        .then((s) => {
-          if (alive && s.status !== "pending") {
-            setSession(s);
-            setPhase("ready");
-            setCode("");
-            setError("");
-          }
-        })
-        .catch((e) => {
-          if (alive) {
-            setPhase("pair");
-            handleError(e);
-          }
-        });
-    poll();
-    const timer = setInterval(poll, 1500);
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const s = await call<Session & { status?: string }>(
+          "/pair/complete",
+          {},
+        );
+        if (!alive) return;
+        if (s.status !== "pending") {
+          acceptSession(s);
+          setCode("");
+          return;
+        }
+        setError("");
+      } catch (e) {
+        if (!alive) return;
+        handleError(e);
+        if (e instanceof ApiError && [401, 403].includes(e.status)) {
+          setPhase("pair");
+          return;
+        }
+      }
+      if (alive) timer = setTimeout(() => void poll(), 1500);
+    };
+    void poll();
     return () => {
       alive = false;
-      clearInterval(timer);
+      clearTimeout(timer);
     };
-  }, [phase, handleError]);
+  }, [phase, handleError, acceptSession]);
   useEffect(() => {
-    if (phase !== "ready") return;
+    if (phase !== "ready" || !foreground || !network) return;
+    const model = draft.current;
     const controller = new AbortController();
+    refreshAbort.current = controller;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const run = async () => {
       while (!controller.signal.aborted) {
         try {
-          await refresh();
+          if (!(await refresh()) || controller.signal.aborted) return;
           await events(cursor.current, controller.signal, (event) => {
             if (event.id > cursor.current) {
               cursor.current = event.id;
@@ -229,7 +367,7 @@ function CompanionApp() {
             }
           });
         } catch (e) {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted || draft.current !== model) return;
           setOnline(false);
           handleError(e);
           if (e instanceof ApiError && e.status === 401) return;
@@ -251,88 +389,126 @@ function CompanionApp() {
     void run();
     return () => {
       controller.abort();
+      if (refreshAbort.current === controller) refreshAbort.current = null;
       clearTimeout(refreshTimer);
     };
-  }, [phase, tick, refresh, handleError]);
+  }, [phase, tick, refresh, handleError, foreground, network]);
   useEffect(() => {
     const resume = () => {
-      if (document.visibilityState === "visible") setTick((n) => n + 1);
-      else if (phase === "ready" && dirty.current)
-        void call("/draft", { text: currentText.current }, "PUT", true).catch(
-          () => {},
-        );
+      const visible = document.visibilityState !== "hidden";
+      setForeground(visible);
+      setNetwork(navigator.onLine);
+      if (visible) {
+        setOnline(false);
+        setTick((n) => n + 1);
+      } else if (draft.current?.dirty)
+        void persist(draft.current.text).catch(() => {});
     };
+    const offline = () => {
+      setNetwork(false);
+      setOnline(false);
+    };
+    const hide = () => {
+      setForeground(false);
+      setOnline(false);
+      if (draft.current?.dirty)
+        void persist(draft.current.text).catch(() => {});
+    };
+    const mode = matchMedia("(display-mode: standalone)");
+    const installChanged = () => setInstalled(standalone());
     document.addEventListener("visibilitychange", resume);
+    window.addEventListener("pageshow", resume);
+    window.addEventListener("pagehide", hide);
     window.addEventListener("online", resume);
+    window.addEventListener("offline", offline);
+    mode.addEventListener("change", installChanged);
     return () => {
       document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("pageshow", resume);
+      window.removeEventListener("pagehide", hide);
       window.removeEventListener("online", resume);
+      window.removeEventListener("offline", offline);
+      mode.removeEventListener("change", installChanged);
     };
-  }, [phase]);
+  }, [persist]);
+  useEffect(() => {
+    document.documentElement.lang = ko ? "ko" : "en";
+  }, [ko]);
   useEffect(() => {
     if (follow.current)
       bottom.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [snapshot?.messages.length, view]);
   const save = (value: string) => {
-    setText(value);
-    currentText.current = value;
-    dirty.current = true;
+    const model = draft.current;
+    if (!model) return;
+    model.edit(value);
+    showDraft();
+    const revision = model.revision;
     clearTimeout(draftTimer.current || undefined);
     draftTimer.current = setTimeout(
       () =>
-        void persist(value)
-          .then(() => {
-            if (currentText.current === value) dirty.current = false;
-          })
-          .catch(handleError),
+        void persist(value, revision).catch((e) => {
+          if (draft.current === model) {
+            showDraft();
+            handleError(e);
+          }
+        }),
       400,
     );
   };
-  const persist = (value: string): Promise<void> => {
-    const write = draftWrite.current
-      .catch(() => {})
-      .then(() => call<void>("/draft", { text: value }, "PUT"));
-    draftWrite.current = write;
-    return write;
-  };
   const send = async () => {
-    if (!text.trim() || sending || snapshot?.job?.status === "running") return;
+    const model = draft.current;
+    if (
+      !model ||
+      !model.text.trim() ||
+      !draftFits(model.text) ||
+      sending ||
+      !online ||
+      snapshot?.job?.status === "running"
+    )
+      return;
     setSending(true);
     setError("");
     clearTimeout(draftTimer.current || undefined);
+    const request = model.prepare(crypto.randomUUID());
     try {
-      const submitted = text;
       await draftWrite.current.catch(() => {});
-      if (!pending.current || pending.current.request !== text)
-        pending.current = { request: text, request_id: crypto.randomUUID() };
-      await call("/jobs", pending.current);
-      pending.current = null;
-      if (currentText.current === submitted) {
-        dirty.current = false;
-        currentText.current = "";
-        setText("");
-      } else {
-        dirty.current = true;
-        await persist(currentText.current);
-      }
+      if (draft.current !== model) return;
+      await call("/jobs", request);
+      if (draft.current !== model) return;
+      model.accepted(request.request_id);
+      showDraft();
+      if (model.dirty) await persist(model.text);
       setView("council");
       follow.current = true;
       await refresh();
     } catch (e) {
-      handleError(e);
+      if (draft.current === model) {
+        showDraft();
+        handleError(e);
+      }
     } finally {
       setSending(false);
     }
   };
-  const openFile = async (target: string) => {
-    try {
-      setPreview(await call("/files/read", { target }));
-    } catch (e) {
-      handleError(e);
-    }
-  };
+  const openFile = useCallback(
+    async (target: string) => {
+      const model = draft.current;
+      try {
+        const value = await call<typeof preview>("/files/read", { target });
+        if (draft.current === model) setPreview(value);
+      } catch (e) {
+        if (draft.current === model) handleError(e);
+      }
+    },
+    [handleError],
+  );
+  const openLink = useCallback(
+    (href: string) => void openWeb(href).catch(handleError),
+    [handleError],
+  );
   useEffect(() => {
-    if (!preview && !usage) return;
+    if (!preview && !usage && !installHelp) return;
     const previous = document.activeElement as HTMLElement | null;
     const sheets = document.querySelectorAll<HTMLElement>(".phone-sheet"),
       sheet = sheets[sheets.length - 1];
@@ -347,7 +523,8 @@ function CompanionApp() {
       if (e.key === "Escape") {
         e.preventDefault();
         if (preview) setPreview(null);
-        else setUsage(false);
+        else if (usage) setUsage(false);
+        else setInstallHelp(false);
       }
       if (e.key === "Tab") {
         const all = nodes(),
@@ -367,13 +544,9 @@ function CompanionApp() {
       document.removeEventListener("keydown", key);
       previous?.focus();
     };
-  }, [!!preview, usage]);
+  }, [!!preview, usage, installHelp]);
   const markdown = (content: string) => (
-    <MarkdownContent
-      text={content}
-      onFile={(target) => void openFile(target)}
-      onWeb={(href) => void openWeb(href).catch(handleError)}
-    />
+    <MarkdownContent text={content} onFile={openFile} onWeb={openLink} />
   );
   const running = snapshot?.job?.status === "running";
   const participants = [session?.coder, ...(session?.reviewers || [])].filter(
@@ -423,17 +596,34 @@ function CompanionApp() {
             <small>{t("COMPANION", "컴패니언")}</small>
           </div>
         </div>
-        <button
-          className="phone-icon-button"
-          aria-label="Change language"
-          onClick={() => {
-            setKo(!ko);
-            localStorage.setItem("council-phone-language", !ko ? "ko" : "en");
-          }}
-        >
-          <Globe size={18} />
-          <small>{ko ? "KO" : "EN"}</small>
-        </button>
+        <div className="phone-header-actions">
+          {!nativeCompanion && !installed && (
+            <button
+              className="phone-icon-button"
+              aria-label="Add to Home Screen"
+              title={t("Add to Home Screen", "홈 화면에 추가")}
+              onClick={() => setInstallHelp(true)}
+            >
+              <PlusSquare size={18} />
+            </button>
+          )}
+          <button
+            className="phone-icon-button"
+            aria-label="Change language"
+            onClick={() => {
+              setKo(!ko);
+              try {
+                localStorage.setItem(
+                  "council-phone-language",
+                  !ko ? "ko" : "en",
+                );
+              } catch {}
+            }}
+          >
+            <Globe size={18} />
+            <small>{ko ? "KO" : "EN"}</small>
+          </button>
+        </div>
       </header>
       {phase !== "ready" ? (
         <main className="pair-screen">
@@ -503,7 +693,7 @@ function CompanionApp() {
                     onChange={(e) => setName(e.target.value)}
                   />
                 </label>
-                {nativeCompanion && (
+                {!(initialCode && code === initialCode) && (
                   <label>
                     {t("Pairing link from your PC", "PC의 연결 링크")}
                     <input
@@ -542,16 +732,14 @@ function CompanionApp() {
               </form>
             )
           )}
-          {nativeCompanion && phase === "pair" && (
+          {phase === "pair" && (
             <div className="pair-recovery">
               <button
                 className="phone-secondary"
                 onClick={() =>
                   void call<Session>("/session")
                     .then((s) => {
-                      setSession(s);
-                      setPhase("ready");
-                      setError("");
+                      acceptSession(s);
                     })
                     .catch(handleError)
                 }
@@ -559,19 +747,21 @@ function CompanionApp() {
                 <RefreshCw size={14} />
                 {t("Retry saved connection", "저장된 연결 재시도")}
               </button>
-              <button
-                className="phone-secondary"
-                onClick={() =>
-                  void forget()
-                    .then(() => {
-                      setCode("");
-                      setError("");
-                    })
-                    .catch(handleError)
-                }
-              >
-                {t("Forget saved connection", "저장된 연결 지우기")}
-              </button>
+              {nativeCompanion && (
+                <button
+                  className="phone-secondary"
+                  onClick={() =>
+                    void forget()
+                      .then(() => {
+                        setCode("");
+                        setError("");
+                      })
+                      .catch(handleError)
+                  }
+                >
+                  {t("Forget saved connection", "저장된 연결 지우기")}
+                </button>
+              )}
             </div>
           )}
           {phase === "pending" && (
@@ -619,6 +809,25 @@ function CompanionApp() {
               </button>
             ))}
           </nav>
+          {!online && (
+            <div className="phone-reconnect" role="status">
+              <WifiOff size={15} />
+              <span>
+                {t(
+                  "Waiting for your PC. Your input stays here.",
+                  "PC 연결을 기다리는 중입니다. 입력한 내용은 유지됩니다.",
+                )}
+              </span>
+              <button
+                onClick={() => {
+                  setNetwork(navigator.onLine);
+                  setTick((n) => n + 1);
+                }}
+              >
+                {t("Reconnect", "재연결")}
+              </button>
+            </div>
+          )}
           {error && (
             <p className="phone-alert" role="alert">
               {error}
@@ -803,12 +1012,46 @@ function CompanionApp() {
                   <button
                     className="phone-send"
                     aria-label="Send message"
-                    disabled={!text.trim() || sending || !online}
+                    disabled={
+                      !text.trim() || sending || !online || !draftFits(text)
+                    }
                   >
                     <ArrowUp size={19} />
                   </button>
                 )}
               </div>
+              <small
+                className="phone-draft-status"
+                role="status"
+                aria-label="Draft status"
+              >
+                {draftStatus === "long"
+                  ? t(
+                      "This message is too long to save or send. Shorten it to continue.",
+                      "입력 내용이 너무 깁니다. 저장·전송하려면 줄여 주세요.",
+                    )
+                  : draftStatus === "saving"
+                    ? t("Saving to your PC…", "PC에 저장하는 중…")
+                    : draftStatus === "restored"
+                      ? t(
+                          "Recovered from this tab · syncing when connected",
+                          "현재 탭에서 입력 복구 · 연결되면 동기화",
+                        )
+                      : draftStatus === "local"
+                        ? t(
+                            "Kept in this tab · waiting to sync",
+                            "현재 탭에 임시 보관 · 동기화 대기",
+                          )
+                        : draftStatus === "memory"
+                          ? t(
+                              "Not synced yet · keep this screen open",
+                              "아직 동기화되지 않았습니다 · 이 화면을 유지하세요",
+                            )
+                          : t(
+                              "Draft saved on your PC",
+                              "입력 내용이 PC에 저장되었습니다",
+                            )}
+              </small>
             </form>
           ) : (
             <p className="observer-notice">
@@ -827,9 +1070,7 @@ function CompanionApp() {
               onClick={() =>
                 void call("/logout", {})
                   .then(() => {
-                    setSession(null);
-                    setSnapshot(null);
-                    setPhase("pair");
+                    clearSession();
                     setCode("");
                   })
                   .catch(handleError)
@@ -840,6 +1081,86 @@ function CompanionApp() {
             </button>
           </footer>
         </>
+      )}
+      {installHelp && (
+        <div className="phone-backdrop" onClick={() => setInstallHelp(false)}>
+          <section
+            className="phone-sheet install-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Install companion"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header>
+              <h2>
+                {t(
+                  "Your workspace, one tap away",
+                  "한 번의 터치로 작업 공간 열기",
+                )}
+              </h2>
+              <button
+                className="phone-icon-button"
+                aria-label="Close install guide"
+                onClick={() => setInstallHelp(false)}
+              >
+                <X size={18} />
+              </button>
+            </header>
+            <ol className="install-steps">
+              <li>
+                <Share size={20} />
+                <div>
+                  <strong>
+                    {t("Open Safari’s Share menu", "Safari의 공유 메뉴 열기")}
+                  </strong>
+                  <p>
+                    {t(
+                      "Use Share or More, then choose Add to Home Screen.",
+                      "공유 또는 더 보기에서 ‘홈 화면에 추가’를 선택하세요.",
+                    )}
+                  </p>
+                </div>
+              </li>
+              <li>
+                <PlusSquare size={20} />
+                <div>
+                  <strong>
+                    {t(
+                      "Add Council to your Home Screen",
+                      "홈 화면에 Council 추가",
+                    )}
+                  </strong>
+                  <p>
+                    {t(
+                      "Keep Open as Web App enabled if shown, then tap Add.",
+                      "‘웹 앱으로 열기’가 표시되면 켜 둔 채 ‘추가’를 누르세요.",
+                    )}
+                  </p>
+                </div>
+              </li>
+              <li>
+                <ShieldCheck size={20} />
+                <div>
+                  <strong>
+                    {t("Open the new icon", "추가된 아이콘으로 열기")}
+                  </strong>
+                  <p>
+                    {t(
+                      "If pairing is requested, paste a fresh link from this PC and approve it there. Tailscale must stay connected.",
+                      "연결을 요청하면 이 PC의 새 연결 링크를 붙여 넣고 PC에서 승인하세요. Tailscale 연결을 유지해야 합니다.",
+                    )}
+                  </p>
+                </div>
+              </li>
+            </ol>
+            <p className="quota-note">
+              {t(
+                "Your PC runs the work and needs to stay awake. This app reconnects when reopened; it does not send background notifications.",
+                "작업은 PC에서 실행되므로 PC가 켜져 있어야 합니다. 앱을 다시 열면 재접속하며, 백그라운드 알림은 제공하지 않습니다.",
+              )}
+            </p>
+          </section>
+        </div>
       )}
       {usage && (
         <div className="phone-backdrop" onClick={() => setUsage(false)}>

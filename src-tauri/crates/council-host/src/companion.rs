@@ -356,7 +356,7 @@ async fn boundary(State(c): State<Arc<Companion>>, req: Request, next: Next) -> 
         "cross-origin-resource-policy",
         HeaderValue::from_static("same-origin"),
     );
-    h.insert("content-security-policy",HeaderValue::from_static("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"));
+    h.insert("content-security-policy",HeaderValue::from_static("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"));
     response
 }
 
@@ -761,6 +761,13 @@ async fn static_file(req: Request) -> Response {
     if !key.starts_with("assets/")
         && key != "companion/index.html"
         && key != "companion/third-party-notices.txt"
+        && !matches!(
+            key,
+            "companion/manifest.webmanifest"
+                | "companion/apple-touch-icon.png"
+                | "companion/app-icon-192.png"
+                | "companion/app-icon-512.png"
+        )
     {
         return StatusCode::NOT_FOUND.into_response();
     }
@@ -773,6 +780,10 @@ async fn static_file(req: Request) -> Response {
             "text/css; charset=utf-8"
         } else if key.ends_with(".svg") {
             "image/svg+xml"
+        } else if key.ends_with(".webmanifest") {
+            "application/manifest+json; charset=utf-8"
+        } else if key.ends_with(".png") {
+            "image/png"
         } else if key.ends_with(".txt") {
             "text/plain; charset=utf-8"
         } else {

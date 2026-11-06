@@ -23,6 +23,64 @@
 }
 body {
   margin: 0;
+  -webkit-text-size-adjust: 100%;
+}
+.phone-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.phone-reconnect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 17px;
+  background: #fff8ed;
+  color: #815c29;
+  font-size: 11px;
+  flex: none;
+}
+.phone-reconnect span {
+  flex: 1;
+  line-height: 1.6;
+}
+.phone-reconnect button {
+  font-size: 11px;
+  min-height: 32px;
+  text-decoration: underline;
+}
+.phone-draft-status {
+  display: block;
+  font-size: 10px;
+  padding: 0 8px 7px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.install-steps {
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 22px;
+}
+.install-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  line-height: 1.7;
+}
+.install-steps li > svg {
+  color: var(--accent);
+  flex: none;
+  margin-top: 3px;
+}
+.install-steps strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.install-steps p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 0;
 }
 .pair-recovery {
   display: flex;
