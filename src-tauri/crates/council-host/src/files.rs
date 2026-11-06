@@ -21,7 +21,11 @@ fn target(raw: &str) -> Result<(String, Option<usize>)> {
         .into_owned();
     let mut path = decoded.trim().to_owned();
     if let Some(p) = path.strip_prefix("file:///") {
-        path = p.to_owned();
+        path = if cfg!(windows) {
+            p.to_owned()
+        } else {
+            format!("/{p}")
+        };
     }
     anyhow::ensure!(
         !path.contains('\0') && !path.starts_with("//") && !path.starts_with(r"\\"),
@@ -125,6 +129,11 @@ mod tests {
         assert_eq!(
             target("src/My%20file.rs#L12-L18").unwrap(),
             ("src/My file.rs".into(), Some(12))
+        );
+        #[cfg(unix)]
+        assert_eq!(
+            target("file:///Users/tester/main.rs#L8").unwrap(),
+            ("/Users/tester/main.rs".into(), Some(8))
         );
     }
     #[test]

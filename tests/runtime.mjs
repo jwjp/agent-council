@@ -7,8 +7,11 @@ import {
   copyFileSync,
   existsSync,
   rmSync,
+  chmodSync,
+  statSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, delimiter } from "node:path";
+import { exeSuffix, runtimeRevision } from "../scripts/host-paths.mjs";
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
 const root = mkdtempSync(join(tmpdir(), "council-rust-test-")),
@@ -17,19 +20,23 @@ const root = mkdtempSync(join(tmpdir(), "council-rust-test-")),
 mkdirSync(bin);
 mkdirSync(project);
 const exe = resolve(
-  process.argv[2] || "src-tauri/target/debug/AgentCouncil.exe",
+  process.argv[2] || `src-tauri/target/debug/AgentCouncil${exeSuffix}`,
 );
 let daemon;
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 try {
   const compile = spawnSync(
     "rustc",
-    ["tests/fixture_agent.rs", "-o", join(bin, "fixture.exe")],
+    ["tests/fixture_agent.rs", "-o", join(bin, "fixture" + exeSuffix)],
     { encoding: "utf8" },
   );
   assert.equal(compile.status, 0, compile.stderr);
   for (const name of ["claude", "codex", "grok", "agy", "agent", "gemini"])
-    copyFileSync(join(bin, "fixture.exe"), join(bin, name + ".exe"));
+  {
+    const destination = join(bin, name + exeSuffix);
+    copyFileSync(join(bin, "fixture" + exeSuffix), destination);
+    if (process.platform !== "win32") chmodSync(destination, 0o700);
+  }
   writeFileSync(
     join(root, "settings.json"),
     JSON.stringify({
@@ -45,12 +52,17 @@ try {
     AGENT_COUNCIL_AUTH_HOME: root,
     CLAUDE_CONFIG_DIR: join(root, ".claude"),
     GROK_HOME: join(root, ".grok"),
-    PATH: bin + ";" + process.env.PATH,
+    PATH: bin + delimiter + process.env.PATH,
   };
   daemon = spawn(exe, ["--serve"], { env, windowsHide: true, stdio: "ignore" });
   for (let i = 0; i < 100 && !existsSync(join(root, "runtime.json")); i++)
     await pause(100);
   let runtime = JSON.parse(readFileSync(join(root, "runtime.json"), "utf8"));
+  assert.equal(runtime.revision, runtimeRevision);
+  assert.equal(new URL(runtime.url).hostname, "127.0.0.1");
+  if (process.platform !== "win32") {
+    assert.equal(statSync(join(root, "runtime.json")).mode & 0o077, 0, "Runtime credentials must be private");
+  }
   const request = async (
     path,
     body,
@@ -221,13 +233,16 @@ try {
     await pause(100);
   }
   assert.equal(state.job.status, "cancelled");
-  await pause(300);
   for (const pid of pids) {
     let alive = true;
-    try {
-      process.kill(pid, 0);
-    } catch {
-      alive = false;
+    for (let i = 0; i < 50 && alive; i++) {
+      try {
+        process.kill(pid, 0);
+        await pause(100);
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+        alive = false;
+      }
     }
     assert.equal(alive, false, "Cancelled subprocess tree is still alive");
   }
@@ -242,8 +257,25 @@ try {
   assert.equal(state.draft, "Saved draft 한글");
   assert.ok(state.cursor >= cursor);
   assert.ok(state.messages.some((m) => m.role === "council"));
+  // A host stop must also close the CLI descendants, not just explicit job cancellation.
+  rmSync(join(project, "fixture-pids.txt"), { force: true });
+  await request("/jobs", { request: "WAIT_FOR_CANCEL", request_id: "host-stop" });
+  for (let i = 0; i < 50 && !existsSync(join(project, "fixture-pids.txt")); i++) await pause(100);
+  const stoppingPids = readFileSync(join(project, "fixture-pids.txt"), "utf8").split("\n").map(Number);
+  const exited = new Promise((r) => daemon.once("exit", r));
+  daemon.kill();
+  await exited;
+  for (const pid of stoppingPids) {
+    let alive = true;
+    for (let i = 0; i < 50 && alive; i++) {
+      try { process.kill(pid, 0); await pause(100); }
+      catch (error) { if (error.code !== "ESRCH") throw error; alive = false; }
+    }
+    assert.equal(alive, false, "Host shutdown left a CLI descendant alive");
+  }
+  daemon = null;
   console.log(
-    "PASS authenticated API, validation, idempotency, coder + review + conference + report, usage totals, SSE replay, cancellation tree, restart persistence",
+    "PASS authenticated API, validation, idempotency, coder + review + conference + report, usage totals, SSE replay, cancellation tree, restart persistence, host shutdown tree",
   );
 } finally {
   if (daemon) {

@@ -28,8 +28,10 @@ This is the canonical project instruction file. `CLAUDE.md` and `GEMINI.md` poin
 - `src/App.tsx`, `src/style.css`: shell, composition, conversation, split panes, agent settings and notes.
 - `src/usage-panel.tsx`, `src/quotas.ts`: quota UI and summaries; `src/file-preview.tsx`, `src/links.ts`: file navigation.
 - `src/api.ts`, `src/types.ts`: frontend runtime interface and shared shapes.
-- `src-tauri/src/main.rs`: native commands and executable entry points.
-- `engine.rs`: lead/review/correction/discussion/report orchestration; `process.rs`: CLI resolution, arguments, streamed events, usage parsing and Windows child-process jobs.
+- `src-tauri/src/main.rs`: thin Tauri desktop shell and native commands.
+- `src-tauri/crates/council-core`: shared wire types/version; no GUI, database, subprocess or provider dependencies.
+- `src-tauri/crates/council-host`: GUI-independent desktop execution library and `CouncilHost` executable. The module names below are relative to its `src/` directory. Keep the host free of Tauri/rfd/wry dependencies; `node scripts/check-host-boundary.mjs` enforces this boundary.
+- `engine.rs`: lead/review/correction/discussion/report orchestration; `process.rs`: CLI resolution, arguments, streamed events, usage parsing, Windows jobs and Unix process groups. `platform.rs` owns native data/auth paths and CLI search locations.
 - `quota.rs`: provider usage probes and normalization; `files.rs`: bounded, read-only project/reference previews.
 - `server.rs`: authenticated loopback HTTP/SSE runtime; `store.rs`: SQLite persistence and migration; `updates.rs`: manual GitHub update checks and installation.
 - `docs/runtime-api.md`, `docs/openapi.json`: runtime contract. `scripts/generate-contract.mjs` generates the spec; edit the generator and regenerate the JSON together.
@@ -42,12 +44,12 @@ Run commands from the repository root. Install dependencies with `npm ci` when n
 | Change / purpose | Commands and evidence |
 | --- | --- |
 | Native development | `npm run tauri dev` — use the debug profile, not a release build for every edit |
-| Browser UI iteration | Build the debug engine once with `cargo build --locked --manifest-path src-tauri/Cargo.toml`, then `npm run dev`; open `http://127.0.0.1:1420` |
+| Browser UI iteration | Build the headless engine with `cargo build --locked --manifest-path src-tauri/Cargo.toml -p council-host`, then `npm run dev`; open `http://127.0.0.1:1420` |
 | Frontend behavior/types | `npm test`, `npm run build` as appropriate |
-| Rust behavior | `cargo test --locked --manifest-path src-tauri/Cargo.toml` |
+| Rust behavior | `cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml` (the root GUI executable has no unit tests) |
 | Runtime / adapter / persistence changes | Rebuild the debug executable, then `node tests/runtime.mjs` |
 | UI interactions / input / scrolling / file navigation | `node tests/ui.mjs` — isolated real runtime + native fixtures, installed Edge and a free port 1420 required |
-| Rust formatting | `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` |
+| Rust formatting | `cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check` |
 | Shipping artifact | `npm run tauri build -- --no-bundle`, then `node tests/runtime.mjs src-tauri/target/release/AgentCouncil.exe` and relevant native UI checks |
 | Documentation-only | Review links, source accuracy and `git diff --check`; do not rebuild the app just to edit instructions |
 
@@ -56,8 +58,10 @@ Select checks based on the behavior at risk. After they pass, repeat/broaden onl
 ## Runtime lifecycle and test isolation
 
 - The same executable starts a separate `--serve` process. Closing a window leaves accepted work running. A new GUI can reconnect to an older process with the same app version/compatibility revision.
+- The optional `CouncilHost` executable runs the same host without GUI dependencies. Both launchers use runtime revision 3. See [portable host instructions](docs/PORTABLE_HOST.md) for paths, build/test commands and platform limitations. Do not mistake macOS fixture CI for native GUI or real-account verification.
 - Recompiling the GUI does **not** prove the running background engine was replaced. For backend verification use a fresh isolated data directory or restart only your own idle test runtime. Check descriptor version/revision, PID and executable path. Never kill a user's active job or broadly terminate all agent processes.
 - `AGENT_COUNCIL_DATA` selects isolated runtime data. Production data is under `%LOCALAPPDATA%\AgentCouncil`; keep it intact. `runtime.json` contains a bearer token and must not be printed or committed.
+- macOS data is under `~/Library/Application Support/AgentCouncil`; Linux uses `$XDG_DATA_HOME/AgentCouncil` or `~/.local/share/AgentCouncil`. Preserve Unix path case and keep the runtime credential private. Keep provider-specific Keychain support explicit rather than silently treating unsupported protected storage as zero usage.
 - Existing integration tests isolate auth with `AGENT_COUNCIL_AUTH_HOME`, `CLAUDE_CONFIG_DIR` and `GROK_HOME`, and use fixture CLIs on a private PATH. Reuse those harnesses. Do not mistake fixtures for a real sign-in or quota.
 - `.runtime-test/`, `node_modules/`, `web-dist/`, `src-tauri/target/` and `dist/` are generated/private artifacts. Verify resolved ownership/path boundaries before recursive cleanup.
 - Runtime access stays authenticated and loopback-only. Mobile, Tailscale exposure and pairing require explicit implementation; an HTTP interface alone does not provide remote access.

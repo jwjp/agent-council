@@ -1,21 +1,12 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::path::PathBuf;
 
-pub const AGENTS: [&str; 6] = ["codex", "claude", "agy", "grok", "agent", "gemini"];
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub use council_core::{Event, Job, Message, AGENTS, VERSION};
 pub fn home() -> String {
-    std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_else(|_| ".".into())
+    crate::platform::home().to_string_lossy().into_owned()
 }
 pub fn data_dir() -> PathBuf {
-    std::env::var_os("AGENT_COUNCIL_DATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_else(|| home().into()))
-                .join("AgentCouncil")
-        })
+    crate::platform::data_dir()
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -89,38 +80,29 @@ pub fn canonical(path: &str) -> anyhow::Result<String> {
     Ok(result.strip_prefix(r"\\?\").unwrap_or(&result).to_owned())
 }
 pub fn folder_key(path: &str) -> String {
-    path.replace('/', "\\").to_lowercase()
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Message {
-    pub role: String,
-    pub text: String,
-    #[serde(default)]
-    pub stage: String,
-    #[serde(default)]
-    pub time: String,
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Job {
-    pub id: String,
-    pub folder: String,
-    pub request: String,
-    pub request_id: String,
-    pub status: String,
-    pub time: String,
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Event {
-    pub id: i64,
-    pub job: String,
-    pub folder: String,
-    pub agent: String,
-    pub kind: String,
-    pub text: String,
-    pub stage: String,
-    pub time: String,
-    pub data: Value,
+    if cfg!(windows) {
+        path.replace('/', "\\").to_lowercase()
+    } else {
+        path.to_owned()
+    }
 }
 pub fn now() -> String {
     chrono::Utc::now().to_rfc3339()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_identity_obeys_platform_case_rules() {
+        if cfg!(windows) {
+            assert_eq!(
+                folder_key("C:/Work/Project"),
+                folder_key(r"c:\work\project")
+            );
+        } else {
+            assert_ne!(folder_key("/work/Project"), folder_key("/work/project"));
+        }
+    }
 }

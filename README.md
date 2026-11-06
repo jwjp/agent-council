@@ -38,6 +38,10 @@ This release is a **Windows desktop application**. Mobile binaries, device pairi
 
 Coding agents should start with [AGENTS.md](AGENTS.md) and [shared project status](docs/PROJECT_STATUS.md). Claude and Gemini entry points reference the same rules. Update the status file at the end of meaningful work so the next agent has current decisions, verification evidence and unfinished items. See [build and signing guidance](docs/BUILD_AND_SIGNING.md) for the separate development, CI and release paths.
 
+Microsoft Store MSIX is under evaluation; see the [distribution assessment and compatibility plan](docs/STORE_DISTRIBUTION.md). No Store package or certification is available yet.
+
+Planned macOS and mobile roles, shared-code boundaries and validation milestones are described in the [cross-platform roadmap](docs/CROSS_PLATFORM_ROADMAP.md). Remote/mobile support is not enabled in the current release.
+
 Install Rust, Windows C++ build tools, Node.js and WebView2, then:
 
 ```powershell
@@ -45,13 +49,14 @@ npm ci
 npm run tauri dev
 ```
 
-Opening the source `index.html` directly displays launch instructions. To run the React interface in a browser against the real Rust engine, first build the debug executable, then run `npm run dev` and open **http://127.0.0.1:1420**. The browser cannot launch a native directory picker; it accepts the folder path instead. The desktop executable provides the native picker and window controls.
+Opening the source `index.html` directly displays launch instructions. To run the React interface in a browser, build the GUI-independent engine with `cargo build --locked --manifest-path src-tauri/Cargo.toml -p council-host`, then run `npm run dev` and open **http://127.0.0.1:1420**. The browser cannot launch a native directory picker; it accepts the folder path instead. The desktop executable provides the native picker and window controls. See [portable host instructions](docs/PORTABLE_HOST.md) for the new workspace boundaries, macOS paths and verification limits.
 
 ```powershell
 npm test
-cargo test --manifest-path src-tauri/Cargo.toml
+cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml
 npm run build
-cargo build --manifest-path src-tauri/Cargo.toml
+cargo build --workspace --locked --manifest-path src-tauri/Cargo.toml
+node scripts/check-host-boundary.mjs
 node tests/runtime.mjs
 node tests/ui.mjs
 npm run tauri build

@@ -194,6 +194,24 @@ impl Engine {
         active[id].cancel();
         Ok(())
     }
+    #[cfg(unix)]
+    pub(crate) async fn shutdown(&self) {
+        {
+            let active = self.active.lock().unwrap();
+            self.maintenance
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            for cancel in active.values() {
+                cancel.cancel();
+            }
+        }
+        // Let owned CLI process groups close and persist the final job state.
+        for _ in 0..100 {
+            if self.active.lock().unwrap().is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }
     async fn call(
         self: &Arc<Self>,
         job: &Job,

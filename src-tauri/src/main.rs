@@ -1,12 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-mod engine;
-mod files;
-mod model;
-mod process;
-mod quota;
-mod server;
-mod store;
-mod updates;
+use council_host::{model, server, updates};
 
 #[tauri::command]
 async fn bootstrap() -> Result<server::Runtime, String> {
@@ -34,22 +27,16 @@ async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 fn main() {
-    if std::env::args().any(|a| a == "--ensure-server") {
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        if runtime.block_on(server::connect()).is_err() {
-            std::process::exit(1);
-        }
-        return;
-    }
-    if std::env::args().any(|a| a == "--serve") {
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        if let Err(error) = runtime.block_on(server::serve()) {
+    match council_host::run_cli_mode() {
+        Ok(true) => return,
+        Ok(false) => {}
+        Err(error) => {
             let _ = std::fs::write(
                 model::data_dir().join("runtime-error.log"),
                 error.to_string(),
             );
+            std::process::exit(1);
         }
-        return;
     }
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![

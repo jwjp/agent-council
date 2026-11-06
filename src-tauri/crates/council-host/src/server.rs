@@ -11,20 +11,13 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
+pub use council_core::Runtime;
+use council_core::RUNTIME_REVISION;
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{collections::HashMap, convert::Infallible, sync::Arc, time::Duration};
 use tower_http::cors::CorsLayer;
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Runtime {
-    pub url: String,
-    pub token: String,
-    pub version: String,
-    pub pid: u32,
-    #[serde(default)]
-    pub revision: u32,
-}
 #[derive(Clone)]
 pub struct Server {
     pub engine: Arc<Engine>,
@@ -185,6 +178,11 @@ async fn events(
 pub async fn serve() -> Result<()> {
     use fs2::FileExt;
     std::fs::create_dir_all(data_dir())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(data_dir(), std::fs::Permissions::from_mode(0o700))?;
+    }
     let lock = std::fs::OpenOptions::new()
         .create(true)
         .read(true)
@@ -204,23 +202,49 @@ pub async fn serve() -> Result<()> {
         ),
         version: VERSION.into(),
         pid: std::process::id(),
-        revision: 2,
+        revision: RUNTIME_REVISION,
     };
     let engine = Engine::new()?;
     let path = data_dir().join("runtime.json");
     let temp = data_dir().join("runtime.json.tmp");
-    std::fs::write(&temp, serde_json::to_vec(&runtime)?)?;
+    {
+        use std::io::Write;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        options
+            .open(&temp)?
+            .write_all(&serde_json::to_vec(&runtime)?)?;
+    }
     std::fs::rename(temp, path)?;
     let s = Server {
         engine: engine.clone(),
         token: runtime.token,
     };
+    #[cfg(unix)]
+    let shutdown_engine = engine.clone();
     tokio::spawn(async move {
         loop {
             engine.clone().refresh_limits().await;
             tokio::time::sleep(Duration::from_secs(300)).await;
         }
     });
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut terminate = signal(SignalKind::terminate())?;
+        tokio::select! {
+            result = async { axum::serve(listener, router(s)).await } => result?,
+            _ = async { tokio::select! { _ = terminate.recv() => {}, _ = tokio::signal::ctrl_c() => {} } } => {
+                shutdown_engine.shutdown().await;
+            }
+        }
+    }
+    #[cfg(not(unix))]
     axum::serve(listener, router(s)).await?;
     drop(lock);
     Ok(())
@@ -246,7 +270,7 @@ pub async fn running() -> Option<Runtime> {
 }
 pub async fn connect() -> Result<Runtime> {
     if let Some(runtime) = running().await {
-        if runtime.version == VERSION && runtime.revision == 2 {
+        if runtime.version == VERSION && runtime.revision == RUNTIME_REVISION {
             return Ok(runtime);
         }
         let snapshot: Value = reqwest::Client::new()
@@ -277,13 +301,19 @@ pub async fn connect() -> Result<Runtime> {
         tokio::time::sleep(Duration::from_millis(400)).await;
     }
     let mut command = tokio::process::Command::new(std::env::current_exe()?);
-    command.arg("--serve");
+    command
+        .arg("--serve")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
     crate::process::hidden(&mut command);
     command.spawn()?;
     for _ in 0..50 {
         tokio::time::sleep(Duration::from_millis(200)).await;
         if let Some(runtime) = running().await {
-            return Ok(runtime);
+            if runtime.version == VERSION && runtime.revision == RUNTIME_REVISION {
+                return Ok(runtime);
+            }
         }
     }
     anyhow::bail!(

@@ -1,6 +1,7 @@
 use crate::model::*;
 use anyhow::Result;
 use serde_json::{json, Value};
+#[cfg(windows)]
 use sha2::{Digest, Sha256};
 
 pub async fn available() -> Result<Value> {
@@ -33,6 +34,7 @@ pub async fn available() -> Result<Value> {
         json!({"available":version(tag)>version(VERSION),"version":tag,"url":release["html_url"],"asset":asset}),
     )
 }
+#[cfg(windows)]
 pub async fn install() -> Result<()> {
     let release = available().await?;
     anyhow::ensure!(
@@ -126,6 +128,10 @@ finally { if([IO.File]::Exists($pending)){[IO.File]::Delete($pending)} }
         }
         return result;
     }
-    #[cfg(not(windows))]
-    anyhow::bail!("Download the platform release to update.")
+}
+
+#[cfg(not(windows))]
+pub async fn install() -> Result<()> {
+    // Reject before any download: the current release asset is a Windows executable.
+    anyhow::bail!("In-app installation is currently supported only by the Windows portable build. Download the release for your platform.")
 }

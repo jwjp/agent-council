@@ -1,8 +1,12 @@
-name: Check Windows application
+name: Check desktop application
 on: [push, pull_request]
 jobs:
   verify:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,8 +22,16 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
-      - run: cargo build --locked --manifest-path src-tauri/Cargo.toml
+      - run: node scripts/check-host-boundary.mjs
+      - run: cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check
+      - run: cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml
+      - run: cargo build --workspace --locked --manifest-path src-tauri/Cargo.toml
       - run: node tests/runtime.mjs
+      - name: Test headless host (Windows)
+        if: runner.os == 'Windows'
+        run: node tests/runtime.mjs src-tauri/target/debug/CouncilHost.exe
+      - name: Test headless host (macOS)
+        if: runner.os == 'macOS'
+        run: node tests/runtime.mjs src-tauri/target/debug/CouncilHost
       - run: node tests/ui.mjs
+        if: runner.os == 'Windows'

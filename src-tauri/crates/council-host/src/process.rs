@@ -12,6 +12,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 pub fn hidden(command: &mut Command) -> &mut Command {
+    command.env("PATH", crate::platform::cli_path());
     #[cfg(windows)]
     {
         command.creation_flags(0x08000000);
@@ -20,8 +21,12 @@ pub fn hidden(command: &mut Command) -> &mut Command {
 }
 
 pub fn launcher(name: &str) -> Result<(PathBuf, Vec<String>)> {
-    let executable =
-        which::which(name).with_context(|| format!("CLI not found on PATH: {name}"))?;
+    let executable = which::which_in(
+        name,
+        Some(crate::platform::cli_path()),
+        std::env::current_dir()?,
+    )
+    .with_context(|| format!("CLI not found on PATH: {name}"))?;
     #[cfg(windows)]
     if executable
         .extension()
@@ -376,9 +381,13 @@ where
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     hidden(&mut command);
+    #[cfg(unix)]
+    command.process_group(0);
     let mut child = command.spawn()?;
     #[cfg(windows)]
     let _guard = JobGuard::assign(child.raw_handle().context("Process handle missing")?)?;
+    #[cfg(unix)]
+    let _guard = ProcessGroup(child.id().context("Process ID missing")? as i32);
     let mut input = child.stdin.take().unwrap();
     let source = if ["codex", "claude", "gemini"].contains(&name) {
         prompt.to_owned()
@@ -459,6 +468,21 @@ fn emit_note<F: FnMut(&str, &str, Value)>(text: &str, emit: &mut F) {
         &note,
         json!({"truncated":text.chars().count()>64000}),
     );
+}
+
+#[cfg(unix)]
+struct ProcessGroup(i32);
+#[cfg(unix)]
+impl Drop for ProcessGroup {
+    fn drop(&mut self) {
+        // A new process group is created before exec; signal only that owned group.
+        // This also cleans up descendants holding inherited output pipes on cancellation.
+        if self.0 > 1 {
+            unsafe {
+                libc::kill(-self.0, libc::SIGKILL);
+            }
+        }
+    }
 }
 
 #[cfg(windows)]

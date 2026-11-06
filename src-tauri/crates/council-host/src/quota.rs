@@ -356,14 +356,10 @@ pub async fn fetch(agent: &str, folder: &str) -> Result<Value> {
             }
         }
         "agent" => {
-            let root = if std::env::var_os("AGENT_COUNCIL_AUTH_HOME").is_some() {
-                auth_home().join("AppData/Roaming/Cursor")
-            } else {
-                std::env::var_os("APPDATA")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| auth_home().join("AppData/Roaming"))
-                    .join("Cursor")
-            };
+            let root = crate::platform::cursor_dir(
+                &auth_home(),
+                std::env::var_os("AGENT_COUNCIL_AUTH_HOME").is_some(),
+            );
             let mut token = read(root.join("auth.json"))
                 .ok()
                 .and_then(|v| v["accessToken"].as_str().map(str::to_owned));

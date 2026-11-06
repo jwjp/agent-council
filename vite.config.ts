@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
-import os from "node:os";
+import { hostDataDir, hostCandidates, runtimeRevision } from "./scripts/host-paths.mjs";
 export default defineConfig({
   plugins: [
     react(),
@@ -26,12 +26,7 @@ export default defineConfig({
             return;
           }
           try {
-            const root =
-              process.env.AGENT_COUNCIL_DATA ||
-              path.join(
-                process.env.LOCALAPPDATA || os.homedir(),
-                "AgentCouncil",
-              );
+            const root = hostDataDir();
             const read = async () =>
               JSON.parse(
                 await readFile(path.join(root, "runtime.json"), "utf8"),
@@ -44,7 +39,7 @@ export default defineConfig({
                 const r = await read();
                 if (
                   new URL(r.url).hostname !== "127.0.0.1" ||
-                  r.revision !== 2 ||
+                  r.revision !== runtimeRevision ||
                   r.version !== expectedVersion
                 )
                   return null;
@@ -59,16 +54,12 @@ export default defineConfig({
             };
             let runtime = await healthy();
             if (!runtime) {
-              const candidates = [
-                "src-tauri/target/debug/AgentCouncil.exe",
-                "src-tauri/target/release/AgentCouncil.exe",
-              ];
-              const exe = candidates
+              const exe = hostCandidates()
                 .map((p) => path.resolve(p))
                 .find(existsSync);
               if (!exe)
                 throw Error(
-                  "Build the Rust engine first: cargo build --manifest-path src-tauri/Cargo.toml",
+                  "Build the Rust engine first: cargo build --manifest-path src-tauri/Cargo.toml -p council-host",
                 );
               const child = spawn(exe, ["--ensure-server"], {
                 windowsHide: true,
