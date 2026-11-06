@@ -38,6 +38,13 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 
 ## Recent tasks — keep the latest five
 
+### 2026-11-06 — Native companion foundation, iPhone first (in progress)
+
+- Owner selected iPhone. Added a separate Tauri mobile shell and GUI-free Rust HTTPS/SSE client, reusing the companion API/UI with native-only cookies, iOS Keychain and Android Keystore glue. Desktop versions/releases, production runtime and tailnet configuration are unchanged.
+- Added origin/path restrictions, response bounds, native stream cancellation, pairing-link entry and retry/forget controls. Added a macOS simulator build/launch workflow; hosted execution is pending. No native mobile distribution is claimed.
+- Locally: mobile frontend build and Windows Rust shell type-check passed. Initial client fixture tests exposed JSON field-order comparison and missing test-only TLS provider setup; corrected these assertions/setup, final checks pending.
+- Next: finish regression/UI checks, run hosted iOS build, inspect actual simulator screenshot and document any remaining native vault/device/signing gaps. iPhone installation/TestFlight still requires Apple provisioning; no credentials/enrollment requested.
+
 ### 2026-11-06 — Smoother review/conference workflow, beta.2 published
 
 - Parallel review, recheck and discussion results are persisted/displayed on completion instead of waiting for the slowest participant. Later rounds retain their barrier, and aggregation/report selection keeps configured order. Failed participants are excluded from downstream retries. A lead clarification returns directly to the user.
@@ -70,11 +77,3 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 - Made runtime fixtures platform-aware and added host-stop descendant checks, architectural dependency checks and Windows/macOS CI. Updated agent instructions, roadmap and operational documentation; included the preceding uncommitted Store assessment documents.
 - Passed locally on Windows: 20 Rust tests, 6 frontend tests/build, runtime integration for both launchers (including matching-host reuse and refusing incompatible busy-host replacement), 18 browser checks, dependency boundaries, document links and whitespace validation. Final Windows/macOS CI passed at `dd5510a`; work is on `feat/portable-host-foundation`, not merged/released. No native Mac GUI/provider, mobile, signing or release evidence is claimed.
 - Next: verify Mac native/provider behavior and implement an isolated paired remote vertical slice. No local provider credentials or Tailscale settings were changed. The final follow-up is documentation-only, so the tested source commit remains the CI reference.
-
-### 2026-11-06 — Desktop and mobile platform roadmap
-
-- Assessed Tauri desktop/mobile support, iOS tooling/lifecycle constraints, Tailscale Serve and macOS distribution requirements against official documentation and current source.
-- Proposed Windows/macOS execution hosts with shared React clients and Tauri mobile companions; retain HTTP/SSE replay, add explicit pairing/revocation and device-specific state when remote access is implemented. Recommend a responsive web trial before native mobile, and signed/notarized Mac direct distribution before Mac App Store evaluation.
-- Recorded current gaps: mobile Tauri would invoke desktop bootstrap, Windows-specific paths/auth/update handling, no remote gateway/pairing, and no verified macOS process/CLI lifecycle.
-- Verification: documentation links, unchanged application version and `git diff --check` passed. No implementation, platform build, API execution, remote configuration, signing or store publication performed.
-- Next: portable host/module boundary and macOS audit; then an end-to-end paired phone-to-host trial. Preserve the uncommitted Store assessment documentation from the preceding task.

@@ -1,0 +1,46 @@
+name: Check native companion
+on:
+  push:
+    branches: ["feat/native-companion"]
+  pull_request:
+    paths: ["mobile/**", "src/companion*", "src-tauri/crates/council-client/**", "vite.mobile.config.ts", ".github/workflows/mobile.yml"]
+  workflow_dispatch:
+jobs:
+  ios-simulator:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim,x86_64-apple-ios
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: "mobile/src-tauri" }
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:mobile
+      - run: cargo fmt --all --manifest-path mobile/src-tauri/Cargo.toml -- --check
+      - run: node scripts/check-mobile-boundary.mjs
+      - name: Initialize iOS project
+        working-directory: mobile
+        run: |
+          command -v xcodegen || brew install xcodegen
+          node ../node_modules/@tauri-apps/cli/tauri.js ios init --ci
+      - name: Build without distribution credentials
+        working-directory: mobile
+        run: |
+          if [ "$(uname -m)" = arm64 ]; then TARGET=aarch64-sim; else TARGET=x86_64; fi
+          node ../node_modules/@tauri-apps/cli/tauri.js ios build --debug --target "$TARGET" --no-sign --ci
+      - name: Launch packaged UI in iPhone simulator
+        run: node scripts/ios-smoke.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-simulator-evidence
+          path: |
+            .runtime-test/ios-*
+            mobile/src-tauri/gen/apple/build/**/Council Companion.app
+          if-no-files-found: warn

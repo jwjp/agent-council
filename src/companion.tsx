@@ -40,37 +40,15 @@ interface PhoneState extends Snapshot {
   device: Session;
   can_cancel: boolean;
 }
-class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-async function call<T>(
-  path: string,
-  body?: unknown,
-  method = body === undefined ? "GET" : "POST",
-  keepalive = false,
-): Promise<T> {
-  const response = await fetch(`/companion/v1${path}`, {
-    method,
-    credentials: "same-origin",
-    headers: body === undefined ? {} : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    keepalive,
-    signal: keepalive ? undefined : AbortSignal.timeout(20000),
-  });
-  const value = await response.json();
-  if (!response.ok)
-    throw new ApiError(response.status, value.error || "Request failed");
-  return value as T;
-}
-function frames(text: string) {
-  const parts = text.replace(/\r\n/g, "\n").split("\n\n");
-  return { frames: parts.slice(0, -1), rest: parts.at(-1) || "" };
-}
+import {
+  ApiError,
+  call,
+  pair,
+  events,
+  openWeb,
+  forget,
+  nativeCompanion,
+} from "./companion-transport";
 // Read the short-lived challenge once, then remove it before any other navigation.
 const initialCode =
   new URLSearchParams(location.hash.slice(1)).get("pair") || "";
@@ -220,70 +198,35 @@ function CompanionApp() {
       while (!controller.signal.aborted) {
         try {
           await refresh();
-          const response = await fetch(
-            `/companion/v1/events?after=${cursor.current}`,
-            { credentials: "same-origin", signal: controller.signal },
-          );
-          if (!response.ok)
-            throw new ApiError(
-              response.status,
-              "Connection lost. Reconnect or pair again.",
-            );
-          if (!response.body)
-            throw Error("This browser cannot stream progress.");
-          setOnline(true);
-          const reader = response.body.getReader(),
-            decoder = new TextDecoder();
-          let buffer = "";
-          try {
-            while (!controller.signal.aborted) {
-              const r = await reader.read();
-              if (r.done) break;
-              buffer += decoder.decode(r.value, { stream: true });
-              const p = frames(buffer);
-              buffer = p.rest;
-              for (const frame of p.frames) {
-                const data = frame
-                  .split("\n")
-                  .filter((l) => l.startsWith("data:"))
-                  .map((l) => l.slice(5).trimStart())
-                  .join("\n");
-                if (!data) continue;
-                const event = JSON.parse(data) as Activity;
-                if (event.id > cursor.current) {
-                  cursor.current = event.id;
-                  if (
-                    ["note", "phase", "tool", "workflow"].includes(event.kind)
-                  ) {
-                    setSnapshot((previous) =>
-                      previous && previous.job?.id === event.job
-                        ? {
-                            ...previous,
-                            activity: compactActivity([
-                              ...previous.activity,
-                              event,
-                            ]),
-                          }
-                        : previous,
-                    );
-                  }
-                  if (
-                    ((event.job && event.job !== currentJob.current) ||
-                      !["note", "phase", "tool", "workflow"].includes(
-                        event.kind,
-                      )) &&
-                    !refreshTimer
-                  )
-                    refreshTimer = setTimeout(() => {
-                      refreshTimer = undefined;
-                      void refresh().catch(handleError);
-                    }, 500);
-                }
+          await events(cursor.current, controller.signal, (event) => {
+            if (event.id > cursor.current) {
+              cursor.current = event.id;
+              if (["note", "phase", "tool", "workflow"].includes(event.kind)) {
+                setSnapshot((previous) =>
+                  previous && previous.job?.id === event.job
+                    ? {
+                        ...previous,
+                        activity: compactActivity([
+                          ...previous.activity,
+                          event,
+                        ]),
+                      }
+                    : previous,
+                );
               }
+              if (
+                ((event.job && event.job !== currentJob.current) ||
+                  !["note", "phase", "tool", "workflow"].includes(
+                    event.kind,
+                  )) &&
+                !refreshTimer
+              )
+                refreshTimer = setTimeout(() => {
+                  refreshTimer = undefined;
+                  void refresh().catch(handleError);
+                }, 500);
             }
-          } finally {
-            await reader.cancel().catch(() => {});
-          }
+          });
         } catch (e) {
           if (controller.signal.aborted) return;
           setOnline(false);
@@ -428,7 +371,7 @@ function CompanionApp() {
     <MarkdownContent
       text={content}
       onFile={(target) => void openFile(target)}
-      onWeb={(href) => window.open(href, "_blank", "noopener,noreferrer")}
+      onWeb={(href) => void openWeb(href).catch(handleError)}
     />
   );
   const running = snapshot?.job?.status === "running";
@@ -514,10 +457,15 @@ function CompanionApp() {
                   "Your device name is waiting on the host. Approve it there to connect.",
                   "기기 이름이 PC에 표시됩니다. PC에서 확인 후 승인하면 연결됩니다.",
                 )
-              : t(
-                  "Scan a pairing QR from the desktop app's Connect a phone menu. Your project and agent sign-ins stay on the host.",
-                  "PC 앱의 휴대폰 연결 메뉴에서 QR을 스캔하세요. 프로젝트와 AI 로그인 정보는 PC에 보관됩니다.",
-                )}
+              : nativeCompanion
+                ? t(
+                    "Paste the pairing link from Connect a phone on your PC, then approve this device there. Keep Tailscale connected on both devices.",
+                    "PC의 휴대폰 연결 메뉴에서 링크를 복사해 붙여 넣고, PC에서 이 기기를 승인하세요. 두 기기의 Tailscale 연결을 유지하세요.",
+                  )
+                : t(
+                    "Scan a pairing QR from the desktop app's Connect a phone menu. Your project and agent sign-ins stay on the host.",
+                    "PC 앱의 휴대폰 연결 메뉴에서 QR을 스캔하세요. 프로젝트와 AI 로그인 정보는 PC에 보관됩니다.",
+                  )}
           </p>
           {error && (
             <p className="phone-alert" role="alert">
@@ -533,8 +481,11 @@ function CompanionApp() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   setError("");
-                  void call("/pair", { code, name })
-                    .then(() => setPhase("pending"))
+                  void pair(code, name)
+                    .then(() => {
+                      setCode("");
+                      setPhase("pending");
+                    })
                     .catch(handleError);
                 }}
               >
@@ -548,6 +499,22 @@ function CompanionApp() {
                     onChange={(e) => setName(e.target.value)}
                   />
                 </label>
+                {nativeCompanion && (
+                  <label>
+                    {t("Pairing link from your PC", "PC의 연결 링크")}
+                    <input
+                      aria-label="Pairing link"
+                      type="url"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="https://your-pc.tailnet.ts.net/companion/#pair=…"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                    />
+                  </label>
+                )}
                 {!code ? (
                   <p>
                     {t(
@@ -563,6 +530,38 @@ function CompanionApp() {
                 )}
               </form>
             )
+          )}
+          {nativeCompanion && phase === "pair" && (
+            <div className="pair-recovery">
+              <button
+                className="phone-secondary"
+                onClick={() =>
+                  void call<Session>("/session")
+                    .then((s) => {
+                      setSession(s);
+                      setPhase("ready");
+                      setError("");
+                    })
+                    .catch(handleError)
+                }
+              >
+                <RefreshCw size={14} />
+                {t("Retry saved connection", "저장된 연결 재시도")}
+              </button>
+              <button
+                className="phone-secondary"
+                onClick={() =>
+                  void forget()
+                    .then(() => {
+                      setCode("");
+                      setError("");
+                    })
+                    .catch(handleError)
+                }
+              >
+                {t("Forget saved connection", "저장된 연결 지우기")}
+              </button>
+            </div>
           )}
           {phase === "pending" && (
             <div className="pending-card">
@@ -911,14 +910,16 @@ function CompanionApp() {
               <RefreshCw size={14} />
               {t("Refresh usage", "사용량 새로 고침")}
             </button>
-            <a
-              className="phone-license"
-              href="/companion/third-party-notices.txt"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {t("QR generator license", "QR 생성기 라이선스")}
-            </a>
+            {!nativeCompanion && (
+              <a
+                className="phone-license"
+                href="/companion/third-party-notices.txt"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t("QR generator license", "QR 생성기 라이선스")}
+              </a>
+            )}
           </section>
         </div>
       )}

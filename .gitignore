@@ -9,3 +9,7 @@ src-tauri/target/
 src-tauri/gen/
 .runtime-test/
 .postman/
+mobile/web-dist/
+mobile/src-tauri/target/
+mobile/src-tauri/gen/
+mobile/src-tauri/plugins/secure-link/.tauri/

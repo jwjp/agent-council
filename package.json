@@ -7,7 +7,9 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
     "tauri": "tauri",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:mobile": "tsc && vite build --config vite.mobile.config.ts && node scripts/mobile-assets.mjs",
+    "dev:mobile": "vite --config vite.mobile.config.ts --host 127.0.0.1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Council Companion",
+  "version": "0.1.0-alpha.1",
+  "identifier": "dev.agentcouncil.companion",
+  "build": {
+    "frontendDist": "../web-dist",
+    "devUrl": "http://localhost:1421"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Council Companion"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "iOS": {
+      "minimumSystemVersion": "15.0"
+    }
+  }
+}

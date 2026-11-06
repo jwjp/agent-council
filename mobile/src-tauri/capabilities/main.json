@@ -1,0 +1,10 @@
+{
+  "identifier": "main",
+  "description": "Packaged companion only; credentials have no JS plugin permission.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default"
+  ]
+}

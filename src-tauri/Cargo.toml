@@ -5,7 +5,7 @@ edition = "2021"
 default-run = "AgentCouncil"
 
 [workspace]
-members = ["crates/council-core", "crates/council-host"]
+members = ["crates/council-core", "crates/council-host", "crates/council-client"]
 resolver = "2"
 
 [workspace.package]
