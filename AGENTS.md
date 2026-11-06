@@ -81,7 +81,7 @@ Select checks based on the behavior at risk. After they pass, repeat/broaden onl
 - Existing `.github/workflows/check.yml` runs checks on pushes/PRs and already uses `Swatinem/rust-cache`. It is **not** a signed release workflow.
 - Do not bump versions, run repeated optimized/LTO builds, package ZIPs or publish a release for routine edits. Use frontend hot reload and incremental debug builds during iteration.
 - A future release workflow should be triggered by release tags or explicit dispatch, build from the exact source revision, verify/sign the executable, package the signed bytes, then publish. Signing-provider approval can require a person; do not promise unattended completion.
-- A shipping version must agree in `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and `src-tauri/tauri.conf.json`. Do not ship a stale executable left in `dist/`.
+- A shipping version must agree in `package.json`, `package-lock.json`, `src-tauri/Cargo.toml` (both the app and `[workspace.package]`), `src-tauri/Cargo.lock` (app/core/host packages) and `src-tauri/tauri.conf.json`. Do not ship a stale executable left in `dist/`.
 - Verify the actual uploaded assets/digests and release status before reporting publication. Keep a failed or pending signing/release step visible; never call an unsigned artifact signed.
 
 ## Communication

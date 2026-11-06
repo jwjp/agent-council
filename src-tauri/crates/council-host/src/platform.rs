@@ -24,6 +24,13 @@ fn current_os() -> Os {
 pub fn home() -> PathBuf {
     let primary = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
     std::env::var_os(primary)
+        .or_else(|| {
+            if cfg!(windows) {
+                std::env::var_os("HOME")
+            } else {
+                None
+            }
+        })
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
 }

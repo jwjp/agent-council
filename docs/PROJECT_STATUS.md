@@ -18,7 +18,7 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 - GitHub Windows checks passed for application commit `d9ccd2f5753b2d3bd6bbb766236e8d1dce0e8053`: [run](https://github.com/jwjp/agent-council/actions/runs/42138950917).
 - Read-only live usage probes on 2026-11-06 returned data for Codex, Claude Code, Antigravity, Grok and Cursor. Gemini had no local OAuth sign-in. These observations do not prove future login availability or full live coding/review for every provider.
 - Model probes were deliberately small: an earlier Codex no-tools response and an Antigravity no-tools streamed response. Full workflows use isolated native fixtures; the Antigravity fixture also exercises streamed text with an empty final response body.
-- Portable-host source verification on Windows: 20 Rust tests, 6 frontend tests/build, both debug launchers' real loopback integration using deterministic six-agent fixtures, 18 browser UI checks and core/host dependency-boundary checks passed. This is separate from the older published release/native UI/live-account evidence above. macOS CI result is pending below.
+- Portable-host source verification on Windows: 20 Rust tests, 6 frontend tests/build, both debug launchers' real loopback integration using deterministic six-agent fixtures, 18 browser UI checks and core/host dependency-boundary checks passed. The initial Windows/macOS CI run passed on both platforms: [run](https://github.com/jwjp/agent-council/actions/runs/42148931804). This is separate from native GUI/live-account evidence; final bootstrap-regression CI is pending below.
 
 ## Decisions and pending work
 
@@ -37,7 +37,7 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 - Added a Cargo workspace with serde-only `council-core`, GUI-independent `council-host`/`CouncilHost`, and a thin Tauri shell. Preserved `/v1` payloads, SQLite import and the portable desktop `--serve` entry point. Runtime revision 3 prevents reusing the older idle engine silently.
 - Added native data/Cursor profile paths, Finder-compatible CLI search fallbacks, Unix case-preserving project keys, absolute file-URI handling, private Unix runtime credentials, process-group cancellation and SIGTERM shutdown. Non-Windows update installation rejects before downloading a Windows EXE.
 - Made runtime fixtures platform-aware and added host-stop descendant checks, architectural dependency checks and Windows/macOS CI. Updated agent instructions, roadmap and operational documentation; included the preceding uncommitted Store assessment documents.
-- Passed locally on Windows: 20 Rust tests, 6 frontend tests/build, runtime integration for both launchers, 18 browser checks, dependency boundaries and whitespace validation. macOS CI is pending; no real Mac GUI/provider, mobile, signing or release evidence is claimed.
+- Passed locally on Windows: 20 Rust tests, 6 frontend tests/build, runtime integration for both launchers (including matching-host reuse and refusing incompatible busy-host replacement), 18 browser checks, dependency boundaries and whitespace validation. Initial Windows/macOS CI passed; final bootstrap regression/diagnostic refinements will be checked in the next run. No native Mac GUI/provider, mobile, signing or release evidence is claimed.
 - Next: inspect macOS CI, fix failures, then verify Mac native/provider behavior and implement an isolated paired remote vertical slice. No local provider credentials or Tailscale settings were changed.
 
 ### 2026-11-06 — Desktop and mobile platform roadmap

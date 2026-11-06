@@ -7,6 +7,10 @@ fn main() {
         }
     });
     if let Err(error) = result {
+        let _ = std::fs::write(
+            council_host::model::data_dir().join("runtime-error.log"),
+            error.to_string(),
+        );
         eprintln!("Agent Council host: {error}");
         std::process::exit(1);
     }

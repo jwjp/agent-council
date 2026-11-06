@@ -31,8 +31,7 @@ try {
     { encoding: "utf8" },
   );
   assert.equal(compile.status, 0, compile.stderr);
-  for (const name of ["claude", "codex", "grok", "agy", "agent", "gemini"])
-  {
+  for (const name of ["claude", "codex", "grok", "agy", "agent", "gemini"]) {
     const destination = join(bin, name + exeSuffix);
     copyFileSync(join(bin, "fixture" + exeSuffix), destination);
     if (process.platform !== "win32") chmodSync(destination, 0o700);
@@ -61,8 +60,28 @@ try {
   assert.equal(runtime.revision, runtimeRevision);
   assert.equal(new URL(runtime.url).hostname, "127.0.0.1");
   if (process.platform !== "win32") {
-    assert.equal(statSync(join(root, "runtime.json")).mode & 0o077, 0, "Runtime credentials must be private");
+    assert.equal(
+      statSync(join(root, "runtime.json")).mode & 0o077,
+      0,
+      "Runtime credentials must be private",
+    );
   }
+  const reused = spawnSync(exe, ["--ensure-server"], {
+    env,
+    windowsHide: true,
+    encoding: "utf8",
+    timeout: 15000,
+  });
+  assert.equal(
+    reused.status,
+    0,
+    "Bootstrap must reconnect to the matching host",
+  );
+  assert.equal(
+    JSON.parse(readFileSync(join(root, "runtime.json"), "utf8")).pid,
+    runtime.pid,
+    "Reconnection must not start a second host",
+  );
   const request = async (
     path,
     body,
@@ -208,6 +227,26 @@ try {
   const pids = readFileSync(join(project, "fixture-pids.txt"), "utf8")
     .split("\n")
     .map(Number);
+  try {
+    writeFileSync(
+      join(root, "runtime.json"),
+      JSON.stringify({ ...runtime, revision: runtimeRevision - 1 }),
+    );
+    const blocked = spawnSync(exe, ["--ensure-server"], {
+      env,
+      windowsHide: true,
+      encoding: "utf8",
+      timeout: 15000,
+    });
+    assert.equal(
+      blocked.status,
+      1,
+      "An incompatible busy engine must not be replaced",
+    );
+    assert.equal((await request("/state")).job.status, "running");
+  } finally {
+    writeFileSync(join(root, "runtime.json"), JSON.stringify(runtime));
+  }
   const unsafeUpdate = await fetch(runtime.url + "/v1/maintenance", {
     method: "POST",
     headers: {
@@ -259,23 +298,34 @@ try {
   assert.ok(state.messages.some((m) => m.role === "council"));
   // A host stop must also close the CLI descendants, not just explicit job cancellation.
   rmSync(join(project, "fixture-pids.txt"), { force: true });
-  await request("/jobs", { request: "WAIT_FOR_CANCEL", request_id: "host-stop" });
-  for (let i = 0; i < 50 && !existsSync(join(project, "fixture-pids.txt")); i++) await pause(100);
-  const stoppingPids = readFileSync(join(project, "fixture-pids.txt"), "utf8").split("\n").map(Number);
+  await request("/jobs", {
+    request: "WAIT_FOR_CANCEL",
+    request_id: "host-stop",
+  });
+  for (let i = 0; i < 50 && !existsSync(join(project, "fixture-pids.txt")); i++)
+    await pause(100);
+  const stoppingPids = readFileSync(join(project, "fixture-pids.txt"), "utf8")
+    .split("\n")
+    .map(Number);
   const exited = new Promise((r) => daemon.once("exit", r));
   daemon.kill();
   await exited;
   for (const pid of stoppingPids) {
     let alive = true;
     for (let i = 0; i < 50 && alive; i++) {
-      try { process.kill(pid, 0); await pause(100); }
-      catch (error) { if (error.code !== "ESRCH") throw error; alive = false; }
+      try {
+        process.kill(pid, 0);
+        await pause(100);
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+        alive = false;
+      }
     }
     assert.equal(alive, false, "Host shutdown left a CLI descendant alive");
   }
   daemon = null;
   console.log(
-    "PASS authenticated API, validation, idempotency, coder + review + conference + report, usage totals, SSE replay, cancellation tree, restart persistence, host shutdown tree",
+    "PASS authenticated API, validation, idempotency, coder + review + conference + report, usage totals, SSE replay, cancellation tree, restart persistence, host shutdown tree, compatible/busy host bootstrap",
   );
 } finally {
   if (daemon) {

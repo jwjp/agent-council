@@ -4,7 +4,11 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { hostDataDir, hostCandidates, runtimeRevision } from "./scripts/host-paths.mjs";
+import {
+  hostDataDir,
+  hostCandidates,
+  runtimeRevision,
+} from "./scripts/host-paths.mjs";
 export default defineConfig({
   plugins: [
     react(),
