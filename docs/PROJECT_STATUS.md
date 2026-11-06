@@ -40,6 +40,12 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 
 ## Recent tasks — keep the latest five
 
+### 2026-11-06 — Read-only code review recorded
+
+- Owner asked for a project analysis while Codex was active, then for the findings to be kept as a reference. Recorded open risks in [CODE_REVIEW.md](CODE_REVIEW.md) against `cd3b6c7`, with each item labeled verified or reported, and added a pointer in AGENTS.md step 1. Owner clarified the notes are advisory reference only, not required fixes. No application source, settings, runtime or release state changed.
+- Highest-priority items: unbounded desktop SSE buffer and same-cursor retry loop on a malformed frame (`src/api.ts`), CLI line length checked only after buffering (`process.rs`), and no SQLite schema versioning/retention (`store.rs`). Companion file grants stay at their pairing-time folders until revocation.
+- Checks: documentation-only; link targets reviewed and `git diff --check` run. Nothing was built or tested. If the owner later chooses to act, R1/R2 are the smallest candidates; no follow-up is required.
+
 ### 2026-11-06 — Native companion foundation verified, iPhone first
 
 - Owner selected iPhone and has no Apple Developer Program membership. Added a separate Tauri phone workspace, GUI-free Rust HTTPS/SSE client and shared React transport/UI. Credentials stay native (iOS Keychain; Android Keystore glue is present but unverified). Desktop releases, production data/jobs and tailnet configuration are unchanged; no enrollment/payment or native distribution was performed.
@@ -72,11 +78,3 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 - Added local/admin and companion OpenAPI contracts, a credential-free Postman v3 boundary collection, native fixture/API tests and phone-sized Edge checks. Final Windows/macOS CI passed at `82d8c98` (link above). Initial CI failures came from equivalent Windows 8.3/macOS symlink path spellings; assertions now verify directory identity. The extra host-started-work test also exposed duplicate fixture wording, fixed independently of application behavior. Local release EXE runtime/companion and Postman checks passed. The installed Postman CLI still does not implement `status`; no workspace/cloud reporting was used.
 - Published unsigned [v3.2.0-beta.1](https://github.com/jwjp/agent-council/releases/tag/v3.2.0-beta.1) as a prerelease with separate EXE/ZIP and SemVer-aware preview-to-stable updates. Application source/tag is `82d8c989565b43a5e647d5786b5034ddce9ae18e`, on `feat/mobile-companion`, based on the portable-host branch; stable v3.1.0 is unchanged. EXE SHA-256: `6d488e7abe3e0de32080bbf01c3e63760c320ef8502f71588f613a0b016a585a`; ZIP SHA-256: `c17a3c7edba7240cffb5599ed5eb77b62472c0e8b2b60b3f2f1fbfcdb1bce9ca`. Documentation-only follow-up does not rebuild these bytes.
 - Owner activated Serve; actual HTTPS/browser checks passed on 8443 and temporary routes were cleaned up. No physical phone/Safari, real Mac GUI/provider check, native mobile binary, signing approval or push delivery is claimed. Next: run the preview, use App menu → Connect a phone, configure the tested private HTTPS route and try a physical iPhone/Android; then address device-specific issues before native mobile packaging.
-
-### 2026-11-06 — Portable execution host implementation
-
-- Added a Cargo workspace with serde-only `council-core`, GUI-independent `council-host`/`CouncilHost`, and a thin Tauri shell. Preserved `/v1` payloads, SQLite import and the portable desktop `--serve` entry point. Runtime revision 3 prevents reusing the older idle engine silently.
-- Added native data/Cursor profile paths, Finder-compatible CLI search fallbacks, Unix case-preserving project keys, absolute file-URI handling, private Unix runtime credentials, process-group cancellation and SIGTERM shutdown. Non-Windows update installation rejects before downloading a Windows EXE.
-- Made runtime fixtures platform-aware and added host-stop descendant checks, architectural dependency checks and Windows/macOS CI. Updated agent instructions, roadmap and operational documentation; included the preceding uncommitted Store assessment documents.
-- Passed locally on Windows: 20 Rust tests, 6 frontend tests/build, runtime integration for both launchers (including matching-host reuse and refusing incompatible busy-host replacement), 18 browser checks, dependency boundaries, document links and whitespace validation. Final Windows/macOS CI passed at `dd5510a`; work is on `feat/portable-host-foundation`, not merged/released. No native Mac GUI/provider, mobile, signing or release evidence is claimed.
-- Next: verify Mac native/provider behavior and implement an isolated paired remote vertical slice. No local provider credentials or Tailscale settings were changed. The final follow-up is documentation-only, so the tested source commit remains the CI reference.

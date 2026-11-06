@@ -4,7 +4,7 @@ This is the canonical project instruction file. `CLAUDE.md` and `GEMINI.md` poin
 
 ## Start and finish every task
 
-1. Read this file and [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Consult the relevant source and documentation before editing; the status file is a handoff, not proof that code still behaves that way.
+1. Read this file and [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Consult the relevant source and documentation before editing; the status file is a handoff, not proof that code still behaves that way. [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) holds advisory review notes from Claude; consult them when touching an affected area, but they are not requirements and need not be resolved before other work. Verify an entry against current source before relying on it.
 2. Check `git status` and preserve unrelated user changes. Continue work authorized by the current conversation without introducing repeated approval requests.
 3. Implement the requested behavior, run checks appropriate to the change, and report actual results and material limitations.
 4. Before the final response, update `docs/PROJECT_STATUS.md` for meaningful changes: behavior/decisions, affected areas, checks actually run, remaining issues, and a concrete next step when needed. Use a dated, concise entry and keep the latest five task entries. Record unsuccessful or skipped verification honestly.
