@@ -19,6 +19,33 @@ const found = run("find", [
   .filter((p) => p.endsWith(".app") && !p.includes(".xcarchive/"));
 if (!found.length) throw Error("No simulator app was produced");
 const app = found[0];
+// Local ad-hoc identity for this simulator only, never an Apple distribution signature.
+const platform = run("/usr/libexec/PlistBuddy", [
+  "-c",
+  "Print :DTPlatformName",
+  app + "/Info.plist",
+]);
+if (platform !== "iphonesimulator")
+  throw Error("Refusing simulator signing for a non-simulator bundle");
+writeFileSync(
+  ".runtime-test/ios-simulator.entitlements",
+  `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>application-identifier</key><string>dev.agentcouncil.companion</string>
+<key>keychain-access-groups</key><array><string>dev.agentcouncil.companion</string></array>
+<key>get-task-allow</key><true/>
+</dict></plist>`,
+);
+run("codesign", [
+  "--force",
+  "--sign",
+  "-",
+  "--entitlements",
+  ".runtime-test/ios-simulator.entitlements",
+  app,
+]);
+run("codesign", ["--verify", "--strict", app]);
 const devices = JSON.parse(
   run("xcrun", ["simctl", "list", "devices", "available", "-j"]),
 ).devices;

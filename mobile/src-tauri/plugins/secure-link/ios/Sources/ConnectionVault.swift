@@ -16,8 +16,9 @@ enum ConnectionVault {
     var item: CFTypeRef?
     let status = SecItemCopyMatching(q as CFDictionary, &item)
     if status == errSecItemNotFound { return nil }
-    guard status == errSecSuccess, let data = item as? Data,
-          let value = String(data: data, encoding: .utf8) else { throw VaultError.failed }
+    guard status == errSecSuccess else { throw VaultError.osStatus(status) }
+    guard let data = item as? Data,
+          let value = String(data: data, encoding: .utf8) else { throw VaultError.invalidEncoding }
     return value
   }
   static func save(_ value: String) throws {
@@ -27,11 +28,19 @@ enum ConnectionVault {
     if status == errSecItemNotFound {
       status = SecItemAdd(query.merging(values) { _, new in new } as CFDictionary, nil)
     }
-    guard status == errSecSuccess else { throw VaultError.failed }
+    guard status == errSecSuccess else { throw VaultError.osStatus(status) }
   }
   static func clear() throws {
     let status = SecItemDelete(query as CFDictionary)
-    guard status == errSecSuccess || status == errSecItemNotFound else { throw VaultError.failed }
+    guard status == errSecSuccess || status == errSecItemNotFound else { throw VaultError.osStatus(status) }
   }
-  enum VaultError: Error { case failed }
+  enum VaultError: Error, CustomStringConvertible {
+    case osStatus(OSStatus), invalidEncoding
+    var description: String {
+      switch self {
+      case .osStatus(let code): return "Keychain OSStatus \(code)"
+      case .invalidEncoding: return "Invalid connection encoding"
+      }
+    }
+  }
 }

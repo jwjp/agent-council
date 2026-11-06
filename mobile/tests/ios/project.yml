@@ -6,6 +6,12 @@ targets:
   VaultTestHost:
     type: application
     platform: iOS
+    entitlements:
+      path: VaultTestHost.entitlements
+      properties:
+        application-identifier: dev.agentcouncil.tests.vault
+        keychain-access-groups: [dev.agentcouncil.tests.vault]
+        get-task-allow: true
     sources: [Host.swift]
     settings:
       base:
