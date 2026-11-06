@@ -1,0 +1,572 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Agent Council companion gateway",
+    "version": "1.0.0",
+    "description": "Opt-in loopback gateway behind private Tailscale Serve HTTPS. Separate from local runtime administrator API. See COMPANION_API.md."
+  },
+  "servers": [
+    {
+      "url": "https://{host}/companion/v1",
+      "variables": {
+        "host": {
+          "default": "your-pc.your-tailnet.ts.net"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "deviceCookie": []
+    }
+  ],
+  "paths": {
+    "/pair": {
+      "post": {
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must exactly match the host-configured origin; browser sets this automatically."
+          }
+        ],
+        "operationId": "claimInvitation",
+        "security": [],
+        "description": "Claim an unused five-minute invitation. Sets HttpOnly CouncilPair cookie; still requires local host approval. Never send the challenge in query parameters.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  }
+                },
+                "required": [
+                  "code",
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Pairing or device credential missing, expired or revoked"
+          },
+          "403": {
+            "description": "Wrong origin, view-only grant or outside approved scope"
+          },
+          "409": {
+            "description": "Project already has active work"
+          },
+          "429": {
+            "description": "Rate or device/invitation limit"
+          },
+          "503": {
+            "description": "Gateway disabled or unavailable"
+          }
+        }
+      }
+    },
+    "/pair/complete": {
+      "post": {
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must exactly match the host-configured origin; browser sets this automatically."
+          }
+        ],
+        "operationId": "completePairing",
+        "security": [
+          {
+            "pendingCookie": []
+          },
+          {
+            "deviceCookie": []
+          }
+        ],
+        "description": "Returns status=pending until approved. Then sets a 30-day HttpOnly SameSite=Strict device cookie (Secure over HTTPS), clears the pending cookie and returns sanitized grant metadata. Reusable credentials are never returned as JSON.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Pairing or device credential missing, expired or revoked"
+          },
+          "403": {
+            "description": "Wrong origin, view-only grant or outside approved scope"
+          },
+          "409": {
+            "description": "Project already has active work"
+          },
+          "429": {
+            "description": "Rate or device/invitation limit"
+          },
+          "503": {
+            "description": "Gateway disabled or unavailable"
+          }
+        }
+      }
+    },
+    "/session": {
+      "get": {
+        "operationId": "companionSession",
+        "description": "Sanitized device/project/team/access/expiry and protocol=companion-v1.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Pairing or device credential missing, expired or revoked"
+          },
+          "403": {
+            "description": "Wrong origin, view-only grant or outside approved scope"
+          },
+          "409": {
+            "description": "Project already has active work"
+          },
+          "429": {
+            "description": "Rate or device/invitation limit"
+          },
+          "503": {
+            "description": "Gateway disabled or unavailable"
+          }
+        }
+      }
+    },
+    "/state": {
+      "get": {
+        "operationId": "companionState",
+        "description": "Snapshot of the approved project, private device draft, sanitized account quotas, can_cancel for own jobs and current permission ceiling. Does not change host selection.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Pairing or device credential missing, expired or revoked"
+          },
+          "403": {
+            "description": "Wrong origin, view-only grant or outside approved scope"
+          },
+          "409": {
+            "description": "Project already has active work"
+          },
+          "429": {
+            "description": "Rate or device/invitation limit"
+          },
+          "503": {
+            "description": "Gateway disabled or unavailable"
+          }
+        }
+      }
+    },
+    "/draft": {
+      "put": {
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must exactly match the host-configured origin; browser sets this automatically."
+          }
+        ],
+        "operationId": "saveCompanionDraft",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "At most 64,000 UTF-8 bytes"
+                  }
+                },
+                "required": [
+                  "text"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Pairing or device credential missing, expired or revoked"
+          },
+          "403": {
+            "description": "Wrong origin, view-only grant or outside approved scope"
+          },
+          "409": {
+            "description": "Project already has active work"
+          },
+          "429": {
+            "description": "Rate or device/invitation limit"
+          },
+          "503": {
+            "description": "Gateway disabled or unavailable"
+          }
+        }
+      }
+    },
+    "/jobs": {
+      "post": {
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must exactly match the host-configured origin; browser sets this automatically."
+          }
+        ],
+        "operationId": "startCompanionJob",
+        "description": "Work grant required. Project/team are supplied by the host. request_id is namespaced per device; retry the same key to recover a lost acknowledgment.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "request": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "request_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "request",
+                  "request_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Pairing or device credential missing, expired or revoked"
+          },
+          "403": {
+            "description": "Wrong origin, view-only grant or outside approved scope"
+          },
+          "409": {
+            "description": "Project already has active work"
+          },
+          "429": {
+            "description": "Rate or device/invitation limit"
+          },
+          "503": {
+            "description": "Gateway disabled or unavailable"
+          }
+        }
+      }
+    },
+    "/jobs/{id}/cancel": {
+      "post": {
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must exactly match the host-configured origin; browser sets this automatically."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "cancelCompanionJob",
+        "description": "Work grant required; cancel only requests submitted by this device.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Pairing or device credential missing, expired or revoked"
+          },
+          "403": {
+            "description": "Wrong origin, view-only grant or outside approved scope"
+          },
+          "409": {
+            "description": "Project already has active work"
+          },
+          "429": {
+            "description": "Rate or device/invitation limit"
+          },
+          "503": {
+            "description": "Gateway disabled or unavailable"
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "operationId": "companionEvents",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "description": "SSE replay/live events for approved project and sanitized global quota updates only. Global IDs may have gaps. Revocation, expiry or gateway disable ends access.",
+        "responses": {
+          "200": {
+            "description": "Event stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Pairing or device credential missing, expired or revoked"
+          },
+          "403": {
+            "description": "Wrong origin, view-only grant or outside approved scope"
+          },
+          "409": {
+            "description": "Project already has active work"
+          },
+          "429": {
+            "description": "Rate or device/invitation limit"
+          },
+          "503": {
+            "description": "Gateway disabled or unavailable"
+          }
+        }
+      }
+    },
+    "/files/read": {
+      "post": {
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must exactly match the host-configured origin; browser sets this automatically."
+          }
+        ],
+        "operationId": "readCompanionFile",
+        "description": "Read-only canonical project/reference scope. Text preview limited to 512 KiB / 3,000 lines; binary files rejected.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Pairing or device credential missing, expired or revoked"
+          },
+          "403": {
+            "description": "Wrong origin, view-only grant or outside approved scope"
+          },
+          "409": {
+            "description": "Project already has active work"
+          },
+          "429": {
+            "description": "Rate or device/invitation limit"
+          },
+          "503": {
+            "description": "Gateway disabled or unavailable"
+          }
+        }
+      }
+    },
+    "/usage/refresh": {
+      "post": {
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must exactly match the host-configured origin; browser sets this automatically."
+          }
+        ],
+        "operationId": "refreshCompanionUsage",
+        "description": "Schedule available local quota readers; maximum once per 30 seconds per device.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Pairing or device credential missing, expired or revoked"
+          },
+          "403": {
+            "description": "Wrong origin, view-only grant or outside approved scope"
+          },
+          "409": {
+            "description": "Project already has active work"
+          },
+          "429": {
+            "description": "Rate or device/invitation limit"
+          },
+          "503": {
+            "description": "Gateway disabled or unavailable"
+          }
+        }
+      }
+    },
+    "/logout": {
+      "post": {
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must exactly match the host-configured origin; browser sets this automatically."
+          }
+        ],
+        "operationId": "disconnectCompanion",
+        "description": "Revoke this device, erase its draft, clear its cookie. Accepted jobs continue.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Pairing or device credential missing, expired or revoked"
+          },
+          "403": {
+            "description": "Wrong origin, view-only grant or outside approved scope"
+          },
+          "409": {
+            "description": "Project already has active work"
+          },
+          "429": {
+            "description": "Rate or device/invitation limit"
+          },
+          "503": {
+            "description": "Gateway disabled or unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "deviceCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "CouncilDevice"
+      },
+      "pendingCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "CouncilPair"
+      }
+    }
+  }
+}

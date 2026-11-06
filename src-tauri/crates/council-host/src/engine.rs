@@ -72,6 +72,14 @@ impl Engine {
     }
     pub fn state(&self) -> Result<Value> {
         let settings = self.settings.lock().unwrap().clone();
+        self.state_for(settings, None, false)
+    }
+    pub fn state_for(
+        &self,
+        settings: Settings,
+        draft_key: Option<&str>,
+        compact: bool,
+    ) -> Result<Value> {
         // Read the cursor first: concurrent new events will be replayed, never skipped.
         let cursor = self.store.cursor()?;
         let messages = self.store.messages(&settings.folder)?;
@@ -82,7 +90,13 @@ impl Engine {
             .find(|j| folder_key(&j.folder) == folder_key(&settings.folder));
         let activity = job
             .as_ref()
-            .map(|j| self.store.job_events(&j.id))
+            .map(|j| {
+                if compact {
+                    self.store.companion_job_events(&j.id)
+                } else {
+                    self.store.job_events(&j.id)
+                }
+            })
             .transpose()?
             .unwrap_or_default();
         let running_jobs = self.active.lock().unwrap().len();
@@ -90,9 +104,10 @@ impl Engine {
             .iter()
             .map(|a| json!({"id":a,"installed":process::launcher(a).is_ok()}))
             .collect();
+        let default_key = format!("draft:{}", folder_key(&settings.folder));
         let draft = self
             .store
-            .get(&format!("draft:{}", folder_key(&settings.folder)))?
+            .get(draft_key.unwrap_or(&default_key))?
             .and_then(|v| v.as_str().map(str::to_owned))
             .unwrap_or(settings.draft.clone());
         Ok(
@@ -110,6 +125,16 @@ impl Engine {
         Ok(())
     }
     pub fn start(self: &Arc<Self>, request: String, request_id: String) -> Result<Job> {
+        let settings = self.settings.lock().unwrap().clone();
+        self.start_for(request, request_id, settings, None)
+    }
+    pub fn start_for(
+        self: &Arc<Self>,
+        request: String,
+        request_id: String,
+        settings: Settings,
+        draft_key: Option<&str>,
+    ) -> Result<Job> {
         anyhow::ensure!(
             !request.trim().is_empty() && request.len() <= 64000,
             "Enter a request of at most 64 KB."
@@ -123,7 +148,6 @@ impl Engine {
             !self.maintenance.load(std::sync::atomic::Ordering::SeqCst),
             "The engine is preparing an update. Reconnect after restart."
         );
-        let settings = self.settings.lock().unwrap().clone();
         let jobs = self.store.jobs()?;
         if let Some(job) = jobs.iter().find(|j| j.request_id == request_id) {
             return Ok(job.clone());
@@ -151,8 +175,9 @@ impl Engine {
             time: now(),
         };
         self.store.accept(&job)?;
+        let default_key = format!("draft:{}", folder_key(&job.folder));
         self.store
-            .put(&format!("draft:{}", folder_key(&job.folder)), &json!(""))?;
+            .put(draft_key.unwrap_or(&default_key), &json!(""))?;
         let cancel = CancellationToken::new();
         active.insert(job.id.clone(), cancel.clone());
         let engine = Arc::clone(self);

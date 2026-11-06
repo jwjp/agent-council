@@ -1,0 +1,16 @@
+$kind: http-request
+name: Foreign origin is denied
+method: POST
+url: '{{companionOrigin}}/companion/v1/pair'
+order: 2000
+headers:
+  - key: Origin
+    value: https://foreign.example
+body:
+  type: json
+  content: '{"code":"0000000000000000000000000000000000000000000000000000000000000000","name":"Boundary test"}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('Foreign origin receives 403', () => pm.response.to.have.status(403));

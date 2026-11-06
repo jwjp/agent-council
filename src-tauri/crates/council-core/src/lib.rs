@@ -4,7 +4,7 @@ use serde_json::Value;
 
 pub const AGENTS: [&str; 6] = ["codex", "claude", "agy", "grok", "agent", "gemini"];
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const RUNTIME_REVISION: u32 = 3;
+pub const RUNTIME_REVISION: u32 = 4;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Runtime {

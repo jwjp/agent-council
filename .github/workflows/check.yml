@@ -27,6 +27,7 @@ jobs:
       - run: cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml
       - run: cargo build --workspace --locked --manifest-path src-tauri/Cargo.toml
       - run: node tests/runtime.mjs
+      - run: node tests/companion.mjs
       - name: Test headless host (Windows)
         if: runner.os == 'Windows'
         run: node tests/runtime.mjs src-tauri/target/debug/CouncilHost.exe
@@ -34,4 +35,6 @@ jobs:
         if: runner.os == 'macOS'
         run: node tests/runtime.mjs src-tauri/target/debug/CouncilHost
       - run: node tests/ui.mjs
+        if: runner.os == 'Windows'
+      - run: node tests/companion-ui.mjs
         if: runner.os == 'Windows'

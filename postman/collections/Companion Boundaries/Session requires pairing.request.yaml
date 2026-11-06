@@ -1,0 +1,15 @@
+$kind: http-request
+name: Session requires pairing
+method: GET
+url: '{{companionOrigin}}/companion/v1/session'
+order: 1000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('Unpaired devices receive 401', () => pm.response.to.have.status(401));
+      pm.test('Error is JSON without a reusable credential', () => {
+        const value = pm.response.json();
+        pm.expect(value.error).to.be.a('string');
+        pm.expect(value).not.to.have.property('token');
+      });

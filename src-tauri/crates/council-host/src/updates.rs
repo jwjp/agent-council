@@ -20,19 +20,36 @@ pub async fn available() -> Result<Value> {
         .as_str()
         .unwrap_or("")
         .trim_start_matches('v');
-    let version = |s: &str| {
-        s.split('.')
-            .map(|v| v.parse::<u32>().unwrap_or(0))
-            .collect::<Vec<_>>()
-    };
     let asset = release["assets"]
         .as_array()
         .and_then(|a| a.iter().find(|a| a["name"] == "AgentCouncil.exe"))
         .cloned()
         .unwrap_or(Value::Null);
     Ok(
-        json!({"available":version(tag)>version(VERSION),"version":tag,"url":release["html_url"],"asset":asset}),
+        json!({"available":newer(tag,VERSION),"version":tag,"url":release["html_url"],"asset":asset}),
     )
+}
+fn newer(candidate: &str, current: &str) -> bool {
+    match (
+        semver::Version::parse(candidate),
+        semver::Version::parse(current),
+    ) {
+        (Ok(candidate), Ok(current)) => candidate > current,
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn stable_updates_supersede_previews_without_downgrading() {
+        assert!(newer("3.2.0", "3.2.0-beta.1"));
+        assert!(newer("3.2.0-beta.2", "3.2.0-beta.1"));
+        assert!(!newer("3.1.0", "3.2.0-beta.1"));
+        assert!(!newer("3.2.0-beta.1", "3.2.0"));
+        assert!(!newer("invalid", "3.2.0"));
+    }
 }
 #[cfg(windows)]
 pub async fn install() -> Result<()> {

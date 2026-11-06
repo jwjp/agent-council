@@ -1,0 +1,13 @@
+$kind: http-request
+name: Draft mutation requires origin
+method: PUT
+url: '{{companionOrigin}}/companion/v1/draft'
+order: 4000
+body:
+  type: json
+  content: '{"text":"Boundary test"}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('Missing Origin receives 403', () => pm.response.to.have.status(403));

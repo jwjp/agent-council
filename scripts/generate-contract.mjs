@@ -196,4 +196,72 @@ const spec = {
     schemas: { Settings: settings },
   },
 };
+const companionInput = object({
+  enabled: { type: "boolean" },
+  origin: string,
+  port: { type: "integer", minimum: 1024, maximum: 65535 },
+});
+paths["/companion"] = {
+  get: {
+    operationId: "companionStatus",
+    description:
+      "Local administrator only: sanitized device/pairing metadata and gateway readiness.",
+    responses,
+  },
+  put: {
+    operationId: "configureCompanion",
+    description:
+      "Opt in to a separate loopback gateway. Origin changes revoke devices. Does not configure Tailscale.",
+    requestBody: body({
+      ...companionInput,
+      required: ["enabled", "origin", "port"],
+      additionalProperties: false,
+    }),
+    responses,
+  },
+};
+paths["/companion/invitations"] = {
+  post: {
+    operationId: "createCompanionInvitation",
+    description:
+      "Capture current project/team. Returns a five-minute, single-use pairing URL fragment; no reusable device credential.",
+    requestBody: body({
+      ...object({ allow_work: { type: "boolean" } }),
+      required: ["allow_work"],
+      additionalProperties: false,
+    }),
+    responses: {
+      ...responses,
+      503: { description: "Gateway disabled or not ready" },
+    },
+  },
+};
+for (const [suffix, method, id, description] of [
+  [
+    "invitations/{id}/approve",
+    "post",
+    "approveCompanionClaim",
+    "Approve a claimed phone invitation. The phone must complete pairing to receive its cookie.",
+  ],
+  [
+    "invitations/{id}",
+    "delete",
+    "rejectCompanionClaim",
+    "Reject/cancel a pending invitation.",
+  ],
+  [
+    "devices/{id}",
+    "delete",
+    "revokeCompanionDevice",
+    "Revoke device access and erase its draft; accepted work continues.",
+  ],
+])
+  paths[`/companion/${suffix}`] = {
+    [method]: {
+      operationId: id,
+      description,
+      parameters: [{ name: "id", in: "path", required: true, schema: string }],
+      responses,
+    },
+  };
 writeFileSync("docs/openapi.json", JSON.stringify(spec, null, 2) + "\n");

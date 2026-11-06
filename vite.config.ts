@@ -91,5 +91,13 @@ export default defineConfig({
   ],
   clearScreen: false,
   server: { port: 1420, strictPort: true },
-  build: { outDir: "web-dist" },
+  build: {
+    outDir: "web-dist",
+    rollupOptions: {
+      input: {
+        main: path.resolve("index.html"),
+        companion: path.resolve("companion/index.html"),
+      },
+    },
+  },
 });

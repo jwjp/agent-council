@@ -9,8 +9,8 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 - Optional lead and optional reviewers; bounded correction/recheck workflow, attributed discussion/report, durable chat/drafts/jobs, cancel, Markdown, split view, complete bounded working notes and read-only file previews.
 - Account usage is separate from project tokens. Quota periods/model groups, resets, sources and explicitly stale readings are retained. Cursor IDE quota and Agent CLI authentication are independent.
 - Engine runs separately as `AgentCouncil.exe --serve`; closing the window does not stop work. Check version/revision and isolate test data when testing backend rebuilds.
-- Source workspace now separates `council-core` wire types, GUI-independent `council-host` library/`CouncilHost` executable, and the Tauri desktop shell. Both executables use runtime revision 3; paths, commands and remaining platform limits are in [PORTABLE_HOST.md](PORTABLE_HOST.md). Published v3.1.0 binaries predate this refactor.
-- Protocol is authenticated loopback HTTP/SSE. Mobile builds, Tailscale exposure, pairing and remote notifications are not implemented.
+- Source workspace now separates `council-core` wire types, GUI-independent `council-host` library/`CouncilHost` executable, and the Tauri desktop shell. Both executables now use runtime revision 4 (portable-host foundation: revision 3); paths, commands and remaining platform limits are in [PORTABLE_HOST.md](PORTABLE_HOST.md). Published v3.1.0 binaries predate this refactor.
+- Source preview **3.2.0-beta.1** adds a separate opt-in companion browser gateway, QR challenge/host approval, scoped revocable cookies, private device drafts, project-bound work/results/usage/files and reconnectable progress. Administrator HTTP/SSE remains loopback-only; runtime revision is **4**. Native mobile builds and remote push are not implemented. See [MOBILE_COMPANION.md](MOBILE_COMPANION.md).
 
 ## Verification evidence
 
@@ -27,10 +27,19 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 - **Eligibility:** no project-level license has been chosen; the Orca MIT notice is not this project's license. No signing application/approval is recorded. OSSign was not accepting new applications at the last check and has a six-month activity requirement. Recheck external conditions before acting.
 - **Release automation:** tag/manual signed release workflow is a proposed next implementation, not an existing feature. Current workflow verifies code; previous release artifacts were built/published separately. Do not claim source-to-signed-binary provenance yet.
 - **Microsoft Store:** owner reports Partner Center registration complete. Store-hosted MSIX is a recommended candidate, not a finalized/implemented channel. Current NSIS configuration and GitHub EXE replacement updater are not MSIX-ready. See [STORE_DISTRIBUTION.md](STORE_DISTRIBUTION.md) for source-backed costs, packaging and isolated compatibility trials. Product identity/reservation, packaged CLI/auth/persistence/lifecycle tests and certification remain pending.
-- **Future mobile:** build on the shared Rust protocol and explicit device pairing/authentication, with Tailscale/LAN design informed by the user's Orca references. Do not expose the current local token/runtime to a network as a shortcut.
+- **Mobile preview:** the browser companion is implemented in source. Sharing requires Tailscale Serve HTTPS account activation/configuration by the owner; the app never exposes the local runtime/Vite or changes tailnet settings automatically. On this PC Tailscale was running, but Serve activation was required; the attempted isolated Serve command was stopped and configuration remains empty. Actual tailnet HTTPS/phone reachability is unverified.
 - **Cross-platform direction:** owner authorized implementation. Shared wire types/portable host boundary, native paths, Unix CLI process groups and macOS CI are implemented in source. Next are actual Mac native/provider validation and the paired remote web trial, then Tauri mobile. The current published Windows app has no remote/mobile support.
+- **Hardware constraint (2026-11-06):** owner has no MacBook. Continue hosted macOS build/fixture checks; do not block Windows-host/mobile-web pairing on purchasing hardware. Native Mac UI/IME, real provider sign-ins/Keychain and distribution tests need an appropriate remote Mac environment or a Mac beta tester later. No rental, account sign-in or paid service is authorized by this clarification.
 
 ## Recent tasks — keep the latest five
+
+### 2026-11-06 — Mobile web companion implementation (preview candidate)
+
+- Added an opt-in separate loopback gateway with single-use five-minute QR challenges, named host approval, 30-day hashed device credentials, HttpOnly/SameSite cookies, Origin checks and live revocation. Project/file/event routing is scoped; full-access agent tools retain the host's real permissions and are not claimed to be sandboxed.
+- Added a shared Markdown renderer, host connection/device controls and an English/Korean phone layout with agent tabs, streamed retained notes, private drafts, account quota windows, line-aware file previews, own-job cancellation and foreground reconnect. Snapshot queries keep only latest complete notes and bounded activity; note/phase/tool streaming avoids full-state retransmission.
+- Added local/admin and companion OpenAPI contracts, a credential-free Postman v3 boundary collection, native fixture/API tests and phone-sized Edge UI checks. The initial Windows checks passed: 24 Rust tests, 8 frontend tests/build, existing runtime tests for both launchers, 18 desktop UI checks, 10 companion UI checks, and 5 local Postman assertions (no cloud run reporting). Note-compaction regressions passed locally; final UI and CI checks are pending.
+- Prepared source version 3.2.0-beta.1 and SemVer-aware preview-to-stable updates. No preview release is published yet. Source is on `feat/mobile-companion`, based on the portable-host branch; stable v3.1.0 is unchanged.
+- Tailnet is connected but Serve needs account-owner web activation. No live phone/Tailscale route, real Mac GUI/provider check, native mobile binary, signing approval or push delivery is claimed. Next: finish final checks, publish a Windows preview, then have the owner enable Serve and test the private HTTPS path from a phone.
 
 ### 2026-11-06 — Portable execution host implementation
 
@@ -63,9 +72,3 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 - Recorded the distinction between optional local signing, recommended public-release signing, initial provider approval and per-release human approval. Kept app version and runtime behavior unchanged.
 - Verification: local Markdown link/entry-point consistency and `git diff --check` passed. No application rebuild or model/API execution was needed for these documentation changes.
 - Next step if signing implementation is requested: resolve the project license with the owner, prepare accurate signing/privacy policies and a provenance-preserving release workflow, then apply/configure provider access. Do not claim approval or add signing secrets speculatively.
-
-### 2026-11-06 — v3.1.0 quota, notes and file navigation
-
-- Audited quota mappings against Orca commit `0fe7a0beed4d7fd914c3ea9408eccf419bfe22d8`; attribution is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-- Fixed Codex period classification, partial/stale Claude updates, disabled Antigravity buckets and stale refresh display. Added readable complete notes, recovery of finished legacy note text, scoped line-aware file previews and clearer Cursor CLI authentication guidance.
-- Published v3.1.0 and verified the uploaded asset digests. Application validation is summarized above; all-provider live coding and remote/mobile support remain unverified/unimplemented respectively.

@@ -16,7 +16,8 @@ impl Store {
             CREATE INDEX IF NOT EXISTS message_folder ON messages(folder,id);
             CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,folder TEXT NOT NULL,request_id TEXT UNIQUE NOT NULL,status TEXT NOT NULL,value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT,value TEXT NOT NULL);
-            CREATE INDEX IF NOT EXISTS event_job ON events(json_extract(value,'$.job'),id);")?;
+            CREATE INDEX IF NOT EXISTS event_job ON events(json_extract(value,'$.job'),id);
+            CREATE INDEX IF NOT EXISTS event_companion ON events(json_extract(value,'$.job'),json_extract(value,'$.kind'),json_extract(value,'$.agent'),id);")?;
         let store = Self(Mutex::new(db));
         if store.get("settings")?.is_none() {
             let old: Value = std::fs::read(root.join("settings.json"))
@@ -233,6 +234,38 @@ impl Store {
         result.reverse();
         Ok(result)
     }
+    pub fn companion_job_events(&self, job: &str) -> Result<Vec<Event>> {
+        let db = self.0.lock().unwrap();
+        let mut rows = Vec::new();
+        let mut notes=db.prepare("SELECT id,value FROM events WHERE json_extract(value,'$.job')=? AND json_extract(value,'$.kind')='note' AND json_extract(value,'$.agent')=? ORDER BY id DESC LIMIT 1")?;
+        for agent in AGENTS {
+            rows.extend(
+                notes
+                    .query_map(params![job, agent], |r| {
+                        Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()?,
+            );
+        }
+        let mut activity=db.prepare("SELECT id,value FROM events WHERE json_extract(value,'$.job')=? AND json_extract(value,'$.kind')=? ORDER BY id DESC LIMIT 40")?;
+        for kind in ["phase", "tool", "error", "done"] {
+            rows.extend(
+                activity
+                    .query_map(params![job, kind], |r| {
+                        Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()?,
+            );
+        }
+        rows.sort_by_key(|(id, _)| *id);
+        rows.into_iter()
+            .map(|(id, value)| {
+                let mut event: Event = serde_json::from_str(&value)?;
+                event.id = id;
+                Ok(event)
+            })
+            .collect()
+    }
     pub fn usage(&self, folder: &str, agent: &str, input: u64, output: u64) -> Result<()> {
         let key = format!("usage:{}", folder_key(folder));
         // Parallel agents must merge under one lock or one agent's totals can
@@ -258,6 +291,36 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn companion_snapshots_keep_latest_complete_notes_without_erasing_history() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let store = Store::open(&root).unwrap();
+        for text in ["old note", "new note with [file](main.rs:2)"] {
+            store
+                .event(Event {
+                    id: 0,
+                    job: "job".into(),
+                    folder: "project".into(),
+                    agent: "codex".into(),
+                    kind: "note".into(),
+                    text: text.into(),
+                    stage: "work".into(),
+                    time: now(),
+                    data: Value::Null,
+                })
+                .unwrap();
+        }
+        let compact = store.companion_job_events("job").unwrap();
+        assert_eq!(compact.len(), 1);
+        assert!(compact[0].text.ends_with("[file](main.rs:2)"));
+        assert_eq!(store.job_events("job").unwrap().len(), 2);
+        drop(store);
+        assert!(root
+            .canonicalize()
+            .unwrap()
+            .starts_with(std::env::temp_dir().canonicalize().unwrap()));
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn concurrent_agents_keep_every_usage_increment() {
         let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());

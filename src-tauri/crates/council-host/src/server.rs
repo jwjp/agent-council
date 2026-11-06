@@ -22,6 +22,7 @@ use tower_http::cors::CorsLayer;
 pub struct Server {
     pub engine: Arc<Engine>,
     pub token: String,
+    pub companion: Arc<crate::companion::Companion>,
 }
 type ApiResult = std::result::Result<Json<Value>, ApiError>;
 pub struct ApiError(StatusCode, String);
@@ -79,12 +80,32 @@ pub fn router(s: Server) -> Router {
         .route("/v1/usage/refresh", axum::routing::post(refresh))
         .route("/v1/update", get(update))
         .route("/v1/maintenance", axum::routing::post(maintenance))
+        .route(
+            "/v1/companion",
+            get(crate::companion::status).put(crate::companion::configure),
+        )
+        .route(
+            "/v1/companion/invitations",
+            axum::routing::post(crate::companion::invite),
+        )
+        .route(
+            "/v1/companion/invitations/{id}/approve",
+            axum::routing::post(crate::companion::approve),
+        )
+        .route(
+            "/v1/companion/invitations/{id}",
+            axum::routing::delete(crate::companion::reject),
+        )
+        .route(
+            "/v1/companion/devices/{id}",
+            axum::routing::delete(crate::companion::revoke),
+        )
         .route_layer(middleware::from_fn_with_state(s.clone(), auth))
         .layer(DefaultBodyLimit::max(131072))
         .layer(
             CorsLayer::new()
                 .allow_origin(origins)
-                .allow_methods([Method::GET, Method::PUT, Method::POST])
+                .allow_methods([Method::GET, Method::PUT, Method::POST, Method::DELETE])
                 .allow_headers([
                     axum::http::header::AUTHORIZATION,
                     axum::http::header::CONTENT_TYPE,
@@ -205,6 +226,8 @@ pub async fn serve() -> Result<()> {
         revision: RUNTIME_REVISION,
     };
     let engine = Engine::new()?;
+    let companion = crate::companion::Companion::new(engine.clone())?;
+    tokio::spawn(companion.clone().run());
     let path = data_dir().join("runtime.json");
     let temp = data_dir().join("runtime.json.tmp");
     {
@@ -224,6 +247,7 @@ pub async fn serve() -> Result<()> {
     let s = Server {
         engine: engine.clone(),
         token: runtime.token,
+        companion,
     };
     #[cfg(unix)]
     let shutdown_engine = engine.clone();

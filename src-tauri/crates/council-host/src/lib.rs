@@ -1,4 +1,5 @@
 //! Desktop execution host; deliberately independent of Tauri and native UI libraries.
+pub mod companion;
 pub mod engine;
 pub mod files;
 pub mod model;

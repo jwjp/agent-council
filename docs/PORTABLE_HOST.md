@@ -14,7 +14,7 @@ The Cargo workspace root remains `src-tauri/Cargo.toml`, so existing Tauri tooli
 
 The desktop executable still serves its own `--serve` mode, preserving portable EXE installation. The optional `CouncilHost` executable runs the same engine without linking the desktop webview. Vite prefers the headless debug host, then debug desktop, then release equivalents. They use the same data directory/lock and cannot run duplicate engines against it.
 
-Runtime revision is now **3**, with unchanged `/v1` operations and event payloads. Bootstrap will not reuse a revision-2 engine; an idle incompatible engine can be replaced, while active work blocks replacement. Use isolated data for rebuilt-engine tests. The latest public release remains v3.1.0 with its prior engine revision.
+The portable-host foundation used runtime revision **3**; the [companion preview](MOBILE_COMPANION.md) advances it to **4**, adding local management and a separate browser gateway. Bootstrap will not reuse an older incompatible engine; an idle engine can be replaced, while active work blocks replacement. Use isolated data for rebuilt-engine tests. The stable v3.1.0 public release predates these source milestones.
 
 ## Build and run
 
@@ -54,4 +54,4 @@ Unix host data directory and new runtime descriptor are created with user-privat
 
 Windows local evidence: 20 Rust tests, 6 frontend tests, both debug executables' runtime integration and 18 browser UI checks passed. Windows and macOS full workspace compilation/unit tests and both runtime launchers passed in [the final CI run](https://github.com/jwjp/agent-council/actions/runs/42149482970) for source commit `dd5510a9c676238f789fce5a1743a45a5f0830b8`. Bootstrap regression checks cover matching-engine reuse and refusing to replace an incompatible engine with active work. Browser UI checks run only on Windows.
 
-Still required before a supported Mac release: native GUI/IME/file-picker checks, real installed CLI/PATH combinations, Keychain/provider quota access where needed, lifecycle under sleep/update, Apple Silicon/Intel coverage appropriate to the release, and signing/notarization. No Mac installer is published. No phone pairing, remote gateway, mobile binary or push implementation is enabled. The next cross-platform feature is an isolated paired phone-to-host connection with explicit per-device access.
+Still required before a supported Mac release: native GUI/IME/file-picker checks, real installed CLI/PATH combinations, Keychain/provider quota access where needed, lifecycle under sleep/update, Apple Silicon/Intel coverage appropriate to the release, and signing/notarization. No Mac installer is published. Phone pairing and a browser gateway are now implemented in the opt-in companion source; native mobile binaries, push and actual phone/Tailscale route verification remain open.

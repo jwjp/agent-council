@@ -28,11 +28,13 @@ Working notes keep complete snapshots rather than the last few characters. Choos
 
 Choose **App menu → Check for updates**. Installation is manual, verifies GitHub's SHA-256 asset digest, and restarts the app. Finish or cancel all work before updating. An upgrade from the Python app can use its existing update button to install the new executable.
 
-## Remote/mobile foundation
+## Mobile web companion preview
 
 The Rust engine exposes an authenticated, versioned HTTP/SSE interface on an ephemeral **loopback-only** port. Durable event IDs support replay after a client disconnect. See [runtime protocol](docs/runtime-api.md) and the [OpenAPI contract](docs/openapi.json).
 
-This release is a **Windows desktop application**. Mobile binaries, device pairing and Tailscale connectivity are not enabled yet. Those clients can later use the same protocol; installing v3 does not expose the machine remotely.
+The **3.2.0-beta.1 source preview** adds **App menu → Connect a phone**: an opt-in gateway with expiring QR invitations, host approval, revocable devices and a responsive browser client. Phones can continue an approved project's conversation, inspect per-agent results/progress/files/usage and cancel their own requests. Full-access agents still run with host permissions; project routing does not create an OS sandbox. [Setup and verification limits](docs/MOBILE_COMPANION.md).
+
+Tailscale Serve HTTPS must be configured by the user, and a disabled tailnet may require account-owner web activation. The app does not publish any port automatically. Stable v3.1.0 has no companion UI; native iOS/Android binaries and background push are not implemented.
 
 ## Develop and verify
 
@@ -40,7 +42,7 @@ Coding agents should start with [AGENTS.md](AGENTS.md) and [shared project statu
 
 Microsoft Store MSIX is under evaluation; see the [distribution assessment and compatibility plan](docs/STORE_DISTRIBUTION.md). No Store package or certification is available yet.
 
-Planned macOS and mobile roles, shared-code boundaries and validation milestones are described in the [cross-platform roadmap](docs/CROSS_PLATFORM_ROADMAP.md). Remote/mobile support is not enabled in the current release.
+Planned macOS and native mobile roles, shared-code boundaries and validation milestones are described in the [cross-platform roadmap](docs/CROSS_PLATFORM_ROADMAP.md). See the companion preview above for browser support and remaining device/route validation.
 
 Install Rust, Windows C++ build tools, Node.js and WebView2, then:
 

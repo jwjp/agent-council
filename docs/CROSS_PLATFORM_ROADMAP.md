@@ -1,6 +1,6 @@
 # Cross-platform recommendation
 
-Assessed 2026-11-06; implementation of the first milestone is now underway in [PORTABLE_HOST.md](PORTABLE_HOST.md). The owner wants eventual macOS, iOS and Android support alongside Windows. Shared wire types and a GUI-independent host are implemented in source, with macOS CI added; native Mac/provider verification, mobile builds, remote endpoints and pairing remain pending. Preserve the current local-only security boundary until remote access is deliberately built and tested.
+Assessed 2026-11-06. The [portable host](PORTABLE_HOST.md) is implemented and its Windows/macOS fixture CI passed. The next source preview adds a [mobile browser companion](MOBILE_COMPANION.md) with a separate opt-in gateway, host-approved pairing and device revocation. Actual phone/Tailscale HTTPS reachability still requires tailnet Serve activation; native Mac/provider verification, native mobile builds and push remain pending. The owner has no MacBook; continue hosted CI without blocking Windows-host/browser work on hardware purchase.
 
 ## Platform roles
 

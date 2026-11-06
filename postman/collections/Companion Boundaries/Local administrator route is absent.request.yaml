@@ -1,0 +1,10 @@
+$kind: http-request
+name: Local administrator route is absent
+method: GET
+url: '{{companionOrigin}}/v1/state'
+order: 3000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('Local runtime state is not exposed', () => pm.response.to.have.status(404));

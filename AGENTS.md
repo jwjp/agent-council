@@ -34,6 +34,7 @@ This is the canonical project instruction file. `CLAUDE.md` and `GEMINI.md` poin
 - `engine.rs`: lead/review/correction/discussion/report orchestration; `process.rs`: CLI resolution, arguments, streamed events, usage parsing, Windows jobs and Unix process groups. `platform.rs` owns native data/auth paths and CLI search locations.
 - `quota.rs`: provider usage probes and normalization; `files.rs`: bounded, read-only project/reference previews.
 - `server.rs`: authenticated loopback HTTP/SSE runtime; `store.rs`: SQLite persistence and migration; `updates.rs`: manual GitHub update checks and installation.
+- `companion.rs`: separate, opt-in loopback browser gateway; host-only management is under `/v1/companion`, paired cookies under `/companion/v1` on a different listener. `src/companion.tsx`, `companion-settings.tsx`, `companion.css` and `companion/index.html` implement the mobile web client and host panel. `markdown.tsx` is shared rendering.
 - `docs/runtime-api.md`, `docs/openapi.json`: runtime contract. `scripts/generate-contract.mjs` generates the spec; edit the generator and regenerate the JSON together.
 - `vite.config.ts`: same-origin local browser bridge to the real engine. Source `index.html` opened with `file://` shows launch instructions, not the working app.
 
@@ -58,13 +59,15 @@ Select checks based on the behavior at risk. After they pass, repeat/broaden onl
 ## Runtime lifecycle and test isolation
 
 - The same executable starts a separate `--serve` process. Closing a window leaves accepted work running. A new GUI can reconnect to an older process with the same app version/compatibility revision.
-- The optional `CouncilHost` executable runs the same host without GUI dependencies. Both launchers use runtime revision 3. See [portable host instructions](docs/PORTABLE_HOST.md) for paths, build/test commands and platform limitations. Do not mistake macOS fixture CI for native GUI or real-account verification.
+- The optional `CouncilHost` executable runs the same host without GUI dependencies. Both launchers now use runtime revision 4 (portable-host foundation was revision 3). See [portable host instructions](docs/PORTABLE_HOST.md) for paths, build/test commands and platform limitations. Do not mistake macOS fixture CI for native GUI or real-account verification.
 - Recompiling the GUI does **not** prove the running background engine was replaced. For backend verification use a fresh isolated data directory or restart only your own idle test runtime. Check descriptor version/revision, PID and executable path. Never kill a user's active job or broadly terminate all agent processes.
 - `AGENT_COUNCIL_DATA` selects isolated runtime data. Production data is under `%LOCALAPPDATA%\AgentCouncil`; keep it intact. `runtime.json` contains a bearer token and must not be printed or committed.
 - macOS data is under `~/Library/Application Support/AgentCouncil`; Linux uses `$XDG_DATA_HOME/AgentCouncil` or `~/.local/share/AgentCouncil`. Preserve Unix path case and keep the runtime credential private. Keep provider-specific Keychain support explicit rather than silently treating unsupported protected storage as zero usage.
 - Existing integration tests isolate auth with `AGENT_COUNCIL_AUTH_HOME`, `CLAUDE_CONFIG_DIR` and `GROK_HOME`, and use fixture CLIs on a private PATH. Reuse those harnesses. Do not mistake fixtures for a real sign-in or quota.
 - `.runtime-test/`, `node_modules/`, `web-dist/`, `src-tauri/target/` and `dist/` are generated/private artifacts. Verify resolved ownership/path boundaries before recursive cleanup.
-- Runtime access stays authenticated and loopback-only. Mobile, Tailscale exposure and pairing require explicit implementation; an HTTP interface alone does not provide remote access.
+- The administrator runtime stays authenticated and loopback-only. Only the companion listener may be reverse-proxied through private Tailscale Serve HTTPS after explicit opt-in. Never publish the runtime, Vite or bearer descriptor. The app does not configure the user's tailnet automatically. Read [mobile companion instructions](docs/MOBILE_COMPANION.md).
+- Companion pairing requires an expiring single-use challenge plus host approval. Preserve hashed device credentials, HttpOnly/SameSite cookies, exact Origin checks for mutations, independent drafts, project/event/file scopes and revocation during SSE. A work grant does not sandbox full-access agent tools; retain the selected execution policy and the explicit host UI explanation.
+- Companion frontend assets are embedded during the host build: run `npm run build` first for a browser-shipping artifact. Verify `node tests/companion.mjs` for backend changes and `node tests/companion-ui.mjs` for companion UI changes. Those tests use isolated fixtures; physical mobile/Tailscale routing remains separate evidence.
 
 ## Quota and credential correctness
 

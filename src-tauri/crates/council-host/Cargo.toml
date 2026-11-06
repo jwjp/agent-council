@@ -29,6 +29,8 @@ fs2 = "0.4"
 regex = "1"
 aes-gcm = "0.10"
 urlencoding = "2"
+subtle = "2"
+semver = "1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

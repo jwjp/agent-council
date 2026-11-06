@@ -1,5 +1,11 @@
 # v3 migration verification
 
+## Companion source preview — 3.2.0-beta.1
+
+Implements an opt-in, project-bound browser companion and separate device-cookie gateway (runtime revision 4), while keeping local administrator access separate. Current results and release status are tracked in [PROJECT_STATUS.md](PROJECT_STATUS.md). Native fixture tests cover pairing/host approval, single-use/restart invalidation, CSRF, cookie/admin separation, observers, scope, independent drafts/idempotency, execution, open-stream revocation and credential-digest persistence. A phone-sized Edge suite covers the full visible flow. The credential-free Postman collection passed 4 requests / 5 assertions with cloud event reporting disabled. A CLI auto-generated cookie-to-header mapping was unsuitable, so only the curated boundary collection is committed.
+
+Tailscale was connected on this PC; Serve required account-owner activation. No actual HTTPS tailnet route, physical phone/Safari, real Mac login/GUI or push verification is claimed. These checks do not execute paid providers. The source preview is not the older stable v3.1.0 release.
+
 ## Portable host source milestone — 2026-11-06
 
 The source workspace now has shared wire types, a GUI-independent `CouncilHost` and the existing desktop launcher. This is not a new published executable release. Local Windows checks passed: 20 Rust tests, 6 frontend tests, frontend build, dependency-boundary checks, runtime integration against each debug launcher and 18 browser UI checks. Runtime fixtures additionally verify host-stop descendant cleanup, compatible host reuse and refusal to replace an incompatible busy host. Both Windows and macOS compilation/unit/runtime jobs passed for source commit `dd5510a` in [CI](https://github.com/jwjp/agent-council/actions/runs/42149482970). Browser UI checks run only on Windows. No live model/provider sweep was rerun. Native Mac GUI/provider verification and mobile/remote support remain open.

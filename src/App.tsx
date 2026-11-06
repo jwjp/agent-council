@@ -39,8 +39,8 @@ import {
   CheckCheck,
   AlertCircle,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { MarkdownContent } from "./markdown";
+import { CompanionSettings } from "./companion-settings";
 import {
   api,
   connect,
@@ -68,7 +68,6 @@ import {
   quotaLabel,
 } from "./quotas";
 import { FilePreviewProvider, useFileLink } from "./file-preview";
-import { linkKind } from "./links";
 import { Usage } from "./usage-panel";
 
 type Translate = (en: string, ko: string) => string;
@@ -91,44 +90,11 @@ function AgentMark({
 const Markdown = memo(function Markdown({ text }: { text: string }) {
   const openFile = useFileLink();
   return (
-    <div className="markdown">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        urlTransform={(url, key) =>
-          key === "href" && linkKind(url) !== "blocked" ? url : ""
-        }
-        components={{
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              onClick={(e) => {
-                e.preventDefault();
-                if (href) {
-                  if (linkKind(href) === "file") openFile(href);
-                  else if (linkKind(href) === "web")
-                    void external(href).catch(console.error);
-                }
-              }}
-            >
-              {children}
-              <ArrowUpRight size={11} />
-            </a>
-          ),
-          table: ({ children }) => (
-            <div className="table-scroll">
-              <table>{children}</table>
-            </div>
-          ),
-          pre: ({ children }) => (
-            <div className="code-block">
-              <pre>{children}</pre>
-            </div>
-          ),
-        }}
-      >
-        {text}
-      </ReactMarkdown>
-    </div>
+    <MarkdownContent
+      text={text}
+      onFile={openFile}
+      onWeb={(href) => void external(href).catch(console.error)}
+    />
   );
 });
 function AgentProblem({
@@ -260,9 +226,9 @@ export default function App() {
     [draft, setDraft] = useState(""),
     [error, setError] = useState(""),
     [connected, setConnected] = useState(false);
-  const [modal, setModal] = useState<"settings" | "team" | "update" | null>(
-      null,
-    ),
+  const [modal, setModal] = useState<
+      "settings" | "team" | "update" | "companion" | null
+    >(null),
     [usage, setUsage] = useState(false),
     [menu, setMenu] = useState(false),
     [chooser, setChooser] = useState<"lead" | "permission" | null>(null),
@@ -548,6 +514,15 @@ export default function App() {
                     {t("Usage", "사용량")}
                   </button>
                   <div className="divider" />
+                  <button
+                    onClick={() => {
+                      setMenu(false);
+                      setModal("companion");
+                    }}
+                  >
+                    <Wifi size={15} />
+                    {t("Connect a phone", "휴대폰 연결")}
+                  </button>
                   <button
                     onClick={() => {
                       setMenu(false);
@@ -1289,7 +1264,18 @@ export default function App() {
             t={t}
           />
         )}
-        {modal === "update" && <UpdateModal close={closeModal} t={t} />}
+        {modal === "update" && (
+          <UpdateModal
+            close={closeModal}
+            t={t}
+            currentVersion={state?.version || "—"}
+          />
+        )}
+        {modal === "companion" && (
+          <Modal title={t("Connect a phone", "휴대폰 연결")} close={closeModal}>
+            <CompanionSettings t={t} />
+          </Modal>
+        )}
       </div>
     </FilePreviewProvider>
   );
@@ -1972,7 +1958,15 @@ function SettingsModal({
     </Modal>
   );
 }
-function UpdateModal({ close, t }: { close: () => void; t: Translate }) {
+function UpdateModal({
+  close,
+  t,
+  currentVersion,
+}: {
+  close: () => void;
+  t: Translate;
+  currentVersion: string;
+}) {
   const [result, setResult] = useState<{
       available: boolean;
       version: string;
@@ -2008,7 +2002,7 @@ function UpdateModal({ close, t }: { close: () => void; t: Translate }) {
         </h3>
         <p>
           {error ||
-            `Agent Council ${result?.available ? result.version : "3.0.0"}`}
+            `Agent Council ${result?.available ? result.version : currentVersion}`}
         </p>
         {result?.available && (
           <>

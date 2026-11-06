@@ -1,0 +1,8 @@
+$kind: collection
+name: Companion Boundaries
+description: No-credential checks against an isolated companion gateway. Full pairing and authenticated flows are covered by tests/companion.mjs; companion-openapi.json is the contract. No real cookies belong in this collection.
+variables:
+  - key: companionOrigin
+    value: http://127.0.0.1:43128
+auth:
+  type: noauth
