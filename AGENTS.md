@@ -33,6 +33,7 @@ This is the canonical project instruction file. `CLAUDE.md` and `GEMINI.md` poin
 - `src-tauri/src/main.rs`: thin Tauri desktop shell and native commands.
 - `src-tauri/crates/council-core`: shared wire types/version; no GUI, database, subprocess or provider dependencies.
 - `src-tauri/crates/council-client`: GUI-free HTTPS companion client; cookies remain native-only. `mobile/src-tauri` is a separate Tauri phone workspace, with no execution host/CLI/database. Read [native companion instructions](docs/NATIVE_COMPANION.md); iPhone is the first validation target. Keep mobile vault commands inaccessible to frontend plugins.
+- Mobile has an independent version/lockfile. Do not bump the desktop version for phone-only work. Keep browser, mocked native IPC, simulator/Keychain and physical-device/signing evidence distinct; a simulator bundle is not an installable iPhone release.
 - `src-tauri/crates/council-host`: GUI-independent desktop execution library and `CouncilHost` executable. The module names below are relative to its `src/` directory. Keep the host free of Tauri/rfd/wry dependencies; `node scripts/check-host-boundary.mjs` enforces this boundary.
 - `engine.rs`: lead/review/correction/discussion/report orchestration; `process.rs`: CLI resolution, arguments, streamed events, usage parsing, Windows jobs and Unix process groups. `platform.rs` owns native data/auth paths and CLI search locations.
 - `quota.rs`: provider usage probes and normalization; `files.rs`: bounded, read-only project/reference previews.

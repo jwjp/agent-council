@@ -5,6 +5,9 @@ on:
   pull_request:
     paths: ["mobile/**", "src/companion*", "src-tauri/crates/council-client/**", "vite.mobile.config.ts", ".github/workflows/mobile.yml"]
   workflow_dispatch:
+concurrency:
+  group: native-companion-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   frontend:
     runs-on: windows-latest
@@ -48,6 +51,8 @@ jobs:
           npm run tauri -- ios build --debug --target "$TARGET" --no-sign --ci
       - name: Launch packaged UI in iPhone simulator
         run: node scripts/ios-smoke.mjs
+      - name: Exercise iOS Keychain using an isolated simulator test host
+        run: node scripts/ios-vault-tests.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

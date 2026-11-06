@@ -177,3 +177,72 @@ async fn native_cookie_approval_revocation_redirect_and_sse_contract() {
     assert!(c.storage_record().is_none());
     server.abort();
 }
+
+#[tokio::test]
+async fn unsafe_cookies_and_incomplete_approval_never_become_saved_credentials() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let app = Router::new()
+        .route(
+            "/companion/v1/session",
+            get(|| async {
+                (
+                    [(
+                        "set-cookie",
+                        format!(
+                            "CouncilDevice={}; Secure; HttpOnly; SameSite=Strict",
+                            "b".repeat(64)
+                        ),
+                    )],
+                    axum::Json(json!({"id":"unsafe"})),
+                )
+            }),
+        )
+        .route(
+            "/companion/v1/pair/complete",
+            post(|| async {
+                (
+                    [(
+                        "set-cookie",
+                        format!(
+                            "CouncilDevice={}; Path=/companion; Secure; HttpOnly; SameSite=Strict",
+                            "b".repeat(64)
+                        ),
+                    )],
+                    axum::Json(json!({"protocol":"companion-v1"})),
+                )
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let mut client = Client {
+        http: reqwest::Client::builder().build().unwrap(),
+        origin: Some(Url::parse(&format!("http://{address}/")).unwrap()),
+        pending: Some("a".repeat(64)),
+        device: None,
+        expires: 0,
+    };
+    assert_eq!(
+        client
+            .request("GET", "/session", None)
+            .await
+            .unwrap_err()
+            .status,
+        502
+    );
+    assert!(client.storage_record().is_none());
+    assert!(client.device.is_none());
+    assert_eq!(
+        client
+            .request("POST", "/pair/complete", Some(json!({})))
+            .await
+            .unwrap_err()
+            .status,
+        502
+    );
+    assert!(client.storage_record().is_none());
+    assert!(client.device.is_none());
+    server.abort();
+}

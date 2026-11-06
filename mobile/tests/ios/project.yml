@@ -1,0 +1,33 @@
+name: CouncilVaultTests
+options:
+  bundleIdPrefix: dev.agentcouncil.tests
+  deploymentTarget: { iOS: "15.0" }
+targets:
+  VaultTestHost:
+    type: application
+    platform: iOS
+    sources: [Host.swift]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.agentcouncil.tests.vault
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+  VaultTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - VaultTests.swift
+      - ../../src-tauri/plugins/secure-link/ios/Sources/ConnectionVault.swift
+    dependencies:
+      - target: VaultTestHost
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  VaultTests:
+    build:
+      targets:
+        VaultTestHost: all
+        VaultTests: [test]
+    test:
+      targets: [VaultTests]

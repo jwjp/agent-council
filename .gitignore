@@ -13,3 +13,5 @@ mobile/web-dist/
 mobile/src-tauri/target/
 mobile/src-tauri/gen/
 mobile/src-tauri/plugins/secure-link/.tauri/
+mobile/tests/ios/*.xcodeproj/
+mobile/tests/ios/build/
