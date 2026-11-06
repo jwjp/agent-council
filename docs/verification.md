@@ -1,5 +1,11 @@
 # v3 migration verification
 
+## Native companion — iPhone-first foundation
+
+Source `f5f8115` passed [native CI](https://github.com/jwjp/agent-council/actions/runs/42220316056): 16 frontend tests, packaged/development mocked-native-IPC flows, iOS Rust/Swift build, three shared-source Keychain XCTest cases with zero failures and native install/launch on iPhone 17 Pro Simulator. The final clean pairing screenshot was downloaded and inspected. Xcode-managed simulator signing/embedded entitlements replaced unsuccessful unsigned/manual re-signing attempts. This is local simulator signing, without an Apple Developer account or distribution certificate.
+
+[Windows/macOS checks](https://github.com/jwjp/agent-council/actions/runs/42220316060) passed: 33 Rust tests, 16 frontend tests/build, runtime/companion integration and both launchers on both OSes; 21 desktop and 11 phone browser checks on Windows. Local mobile type-check/build, six Rust client tests, real-host companion API/browser checks, packaged/development mock-IPC flows and dependency boundaries also passed. These are fixtures/simulator evidence, not a paid-provider sweep, physical-phone pairing/IME/lifecycle validation or native distribution. See [native companion](NATIVE_COMPANION.md).
+
 ## Review/conference flow — beta.2
 
 The source now publishes parallel results as they finish, retains stable evidence order and round barriers, excludes failed peers from downstream retries and returns explicit lead questions for user input. Desktop and phone share a real workflow/member-count rail and compact milestone/note snapshots; readers can keep an earlier scroll position when new results arrive. Native gated fixtures prove a fast review is saved while another reviewer is still blocked, discussion starts after the review barrier, failed peers are not repeatedly retried and questions skip extra rounds. Source is 3.2.0-beta.2; final CI/release evidence is recorded in [PROJECT_STATUS.md](PROJECT_STATUS.md). No paid provider sweep or additional physical-phone test is implied.

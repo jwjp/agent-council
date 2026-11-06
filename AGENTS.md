@@ -86,6 +86,7 @@ Select checks based on the behavior at risk. After they pass, repeat/broaden onl
 ## Build, signing and publishing
 
 - Read [docs/BUILD_AND_SIGNING.md](docs/BUILD_AND_SIGNING.md). Development and ordinary CI are unsigned; trusted code signing belongs to an explicitly requested/authorized release.
+- iOS simulator tests may use a local ad-hoc identity and isolated Keychain entitlements without developer-account credentials. This is not trusted distribution signing or an installable iPhone release.
 - Existing `.github/workflows/check.yml` runs checks on pushes/PRs and already uses `Swatinem/rust-cache`. It is **not** a signed release workflow.
 - Do not bump versions, run repeated optimized/LTO builds, package ZIPs or publish a release for routine edits. Use frontend hot reload and incremental debug builds during iteration.
 - A future release workflow should be triggered by release tags or explicit dispatch, build from the exact source revision, verify/sign the executable, package the signed bytes, then publish. Signing-provider approval can require a person; do not promise unattended completion.
