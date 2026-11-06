@@ -7,7 +7,7 @@ import {
   chmodSync,
   writeFileSync,
   readFileSync,
-  realpathSync,
+  statSync,
   existsSync,
   rmSync,
   readdirSync,
@@ -46,6 +46,13 @@ const env = {
   PATH: bin + delimiter + process.env.PATH,
 };
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+// File identity also handles Windows 8.3 aliases and macOS /var symlinks.
+function directoryIdentity(path) {
+  const info = statSync(path, { bigint: true });
+  assert.ok(info.isDirectory());
+  assert.notEqual(info.ino, 0n);
+  return [info.dev, info.ino];
+}
 let daemon, runtime, port;
 const free = () =>
   new Promise((r, j) => {
@@ -257,9 +264,9 @@ try {
   );
   await local("/settings", { ...config, folder: other }, "PUT");
   const state = await json(await p.request("/companion/v1/state"));
-  assert.equal(
-    realpathSync(state.settings.folder),
-    realpathSync(project),
+  assert.deepEqual(
+    directoryIdentity(state.settings.folder),
+    directoryIdentity(project),
   );
   assert.equal(state.draft, "Phone draft 한글");
   await json(
@@ -294,9 +301,9 @@ try {
   const finished = await json(await p.request("/companion/v1/state"));
   assert.equal(finished.job.status, "done");
   assert.ok(finished.messages.some((m) => m.role === "council"));
-  assert.equal(
-    realpathSync((await local("/state")).settings.folder),
-    realpathSync(other),
+  assert.deepEqual(
+    directoryIdentity((await local("/state")).settings.folder),
+    directoryIdentity(other),
   );
   assert.equal((await local("/state")).messages.length, 0);
   assert.equal((await json(await p2.request("/companion/v1/state"))).draft, "");
