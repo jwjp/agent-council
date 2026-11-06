@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 24, cache: npm }
+        with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm test
       - run: npm run build:mobile
@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 24, cache: npm }
+        with: { node-version: 22, cache: npm }
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios-sim,x86_64-apple-ios
