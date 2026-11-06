@@ -37,6 +37,7 @@ import {
   WifiOff,
   Download,
   CheckCheck,
+  AlertCircle,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -59,7 +60,16 @@ import {
   type Settings,
   type Snapshot,
 } from "./types";
-import { windows, countdown } from "./quotas";
+import {
+  windows,
+  countdown,
+  summaryWindow,
+  percent,
+  quotaLabel,
+} from "./quotas";
+import { FilePreviewProvider, useFileLink } from "./file-preview";
+import { linkKind } from "./links";
+import { Usage } from "./usage-panel";
 
 type Translate = (en: string, ko: string) => string;
 function AgentMark({
@@ -79,17 +89,25 @@ function AgentMark({
   );
 }
 const Markdown = memo(function Markdown({ text }: { text: string }) {
+  const openFile = useFileLink();
   return (
     <div className="markdown">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        urlTransform={(url, key) =>
+          key === "href" && linkKind(url) !== "blocked" ? url : ""
+        }
         components={{
           a: ({ href, children }) => (
             <a
               href={href}
               onClick={(e) => {
                 e.preventDefault();
-                if (href) void external(href);
+                if (href) {
+                  if (linkKind(href) === "file") openFile(href);
+                  else if (linkKind(href) === "web")
+                    void external(href).catch(console.error);
+                }
               }}
             >
               {children}
@@ -113,6 +131,41 @@ const Markdown = memo(function Markdown({ text }: { text: string }) {
     </div>
   );
 });
+function AgentProblem({
+  message,
+  agent,
+  t,
+}: {
+  message: string;
+  agent: string;
+  t: Translate;
+}) {
+  const auth =
+    /authentication required|not authenticated|sign.?in|login.*first|unauthorized/i.test(
+      message,
+    );
+  return (
+    <div className="agent-problem">
+      <div>
+        <AlertCircle size={17} />
+        <strong>
+          {auth
+            ? t("CLI sign-in needed", "CLI 로그인이 필요합니다")
+            : t("This agent needs attention", "에이전트 상태를 확인해 주세요")}
+        </strong>
+      </div>
+      {auth && agent === "agent" && (
+        <p>
+          {t(
+            "Cursor IDE usage can be available while Agent CLI is signed out. Run agent login in a terminal, then retry your request.",
+            "Cursor IDE 사용량을 볼 수 있어도 Agent CLI는 로그아웃 상태일 수 있습니다. 터미널에서 agent login으로 로그인한 뒤 요청을 다시 보내세요.",
+          )}
+        </p>
+      )}
+      <p className="agent-problem-detail">{message}</p>
+    </div>
+  );
+}
 function Modal({
   title,
   subtitle,
@@ -448,772 +501,797 @@ export default function App() {
     }
   }
   return (
-    <div className="app-shell">
-      <div
-        className="titlebar"
-        data-tauri-drag-region
-        onDoubleClick={(e) => {
-          if (e.target === e.currentTarget)
-            void getCurrentWindow().toggleMaximize();
-        }}
-      >
-        <div className="brand">
-          <span className="brand-icon">≋</span>
-          <span>Agent Council</span>
-          <span className="version">{state?.version || "3.0"}</span>
-        </div>
-        <div className="app-menu">
-          <button
-            className={"icon-button " + (menu ? "selected" : "")}
-            title={t("App menu", "앱 메뉴")}
-            onClick={() => setMenu(!menu)}
-          >
-            <MoreHorizontal size={19} />
-          </button>
-          {menu && (
-            <>
-              <div className="dismiss" onClick={() => setMenu(false)} />
-              <div className="menu dropdown">
-                <button
-                  onClick={() => {
-                    setMenu(false);
-                    setModal("settings");
-                  }}
-                >
-                  <Settings2 size={15} />
-                  {t("Settings", "설정")}
-                  <kbd>Ctrl ,</kbd>
-                </button>
-                <button
-                  onClick={() => {
-                    setMenu(false);
-                    setUsage(true);
-                  }}
-                >
-                  <ActivityIcon size={15} />
-                  {t("Usage", "사용량")}
-                </button>
-                <div className="divider" />
-                <button
-                  onClick={() => {
-                    setMenu(false);
-                    setModal("update");
-                  }}
-                >
-                  <Download size={15} />
-                  {t("Check for updates", "업데이트 확인")}
-                </button>
-                <button
-                  onClick={() =>
-                    void external("https://github.com/jwjp/agent-council")
-                  }
-                >
-                  <ArrowUpRight size={15} />
-                  GitHub
-                </button>
-              </div>
-            </>
+    <FilePreviewProvider ko={state?.settings.language === "한국어"}>
+      <div className="app-shell">
+        <div
+          className="titlebar"
+          data-tauri-drag-region
+          onDoubleClick={(e) => {
+            if (e.target === e.currentTarget)
+              void getCurrentWindow().toggleMaximize();
+          }}
+        >
+          <div className="brand">
+            <span className="brand-icon">≋</span>
+            <span>Agent Council</span>
+            <span className="version">{state?.version || "3.0"}</span>
+          </div>
+          <div className="app-menu">
+            <button
+              className={"icon-button " + (menu ? "selected" : "")}
+              title={t("App menu", "앱 메뉴")}
+              onClick={() => setMenu(!menu)}
+            >
+              <MoreHorizontal size={19} />
+            </button>
+            {menu && (
+              <>
+                <div className="dismiss" onClick={() => setMenu(false)} />
+                <div className="menu dropdown">
+                  <button
+                    onClick={() => {
+                      setMenu(false);
+                      setModal("settings");
+                    }}
+                  >
+                    <Settings2 size={15} />
+                    {t("Settings", "설정")}
+                    <kbd>Ctrl ,</kbd>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMenu(false);
+                      setUsage(true);
+                    }}
+                  >
+                    <ActivityIcon size={15} />
+                    {t("Usage", "사용량")}
+                  </button>
+                  <div className="divider" />
+                  <button
+                    onClick={() => {
+                      setMenu(false);
+                      setModal("update");
+                    }}
+                  >
+                    <Download size={15} />
+                    {t("Check for updates", "업데이트 확인")}
+                  </button>
+                  <button
+                    onClick={() =>
+                      void external("https://github.com/jwjp/agent-council")
+                    }
+                  >
+                    <ArrowUpRight size={15} />
+                    GitHub
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="drag-space" data-tauri-drag-region />
+          {desktop && (
+            <div className="window-controls">
+              <button
+                aria-label="Minimize"
+                onClick={() => void getCurrentWindow().minimize()}
+              >
+                <Minus size={15} />
+              </button>
+              <button
+                aria-label="Maximize"
+                onClick={() => void getCurrentWindow().toggleMaximize()}
+              >
+                <Square size={12} />
+              </button>
+              <button
+                className="window-close"
+                aria-label="Close window"
+                title={t(
+                  "Close window · tasks keep running",
+                  "창 닫기 · 작업은 계속 실행됩니다",
+                )}
+                onClick={() => {
+                  if (draftTimer.current) {
+                    clearTimeout(draftTimer.current);
+                    void api(
+                      "/draft",
+                      {
+                        folder: currentFolder.current,
+                        text: draftValue.current,
+                      },
+                      "PUT",
+                    ).finally(() => void getCurrentWindow().close());
+                  } else void getCurrentWindow().close();
+                }}
+              >
+                <X size={17} />
+              </button>
+            </div>
           )}
         </div>
-        <div className="drag-space" data-tauri-drag-region />
-        {desktop && (
-          <div className="window-controls">
+        <div className="app-body">
+          <aside className={side ? "sidebar" : "sidebar collapsed"}>
+            <div className="sidebar-head">
+              <button
+                className="icon-button"
+                title={t("Toggle sidebar", "사이드바 접기")}
+                onClick={() => setSide(!side)}
+              >
+                <PanelLeft size={17} />
+              </button>
+              {side && <span>{t("WORKSPACE", "워크스페이스")}</span>}
+            </div>
             <button
-              aria-label="Minimize"
-              onClick={() => void getCurrentWindow().minimize()}
+              className="nav-item active"
+              onClick={() => input.current?.focus()}
             >
-              <Minus size={15} />
+              <MessageSquare size={17} />
+              {side && t("Council", "대화")}
             </button>
-            <button
-              aria-label="Maximize"
-              onClick={() => void getCurrentWindow().toggleMaximize()}
-            >
-              <Square size={12} />
+            <button className="nav-item" onClick={() => setModal("team")}>
+              <SquareTerminal size={17} />
+              {side && t("Agents", "에이전트")}
             </button>
-            <button
-              className="window-close"
-              aria-label="Close window"
-              title={t(
-                "Close window · tasks keep running",
-                "창 닫기 · 작업은 계속 실행됩니다",
-              )}
-              onClick={() => {
-                if (draftTimer.current) {
-                  clearTimeout(draftTimer.current);
-                  void api(
-                    "/draft",
-                    { folder: currentFolder.current, text: draftValue.current },
-                    "PUT",
-                  ).finally(() => void getCurrentWindow().close());
-                } else void getCurrentWindow().close();
-              }}
-            >
-              <X size={17} />
-            </button>
-          </div>
-        )}
-      </div>
-      <div className="app-body">
-        <aside className={side ? "sidebar" : "sidebar collapsed"}>
-          <div className="sidebar-head">
-            <button
-              className="icon-button"
-              title={t("Toggle sidebar", "사이드바 접기")}
-              onClick={() => setSide(!side)}
-            >
-              <PanelLeft size={17} />
-            </button>
-            {side && <span>{t("WORKSPACE", "워크스페이스")}</span>}
-          </div>
-          <button
-            className="nav-item active"
-            onClick={() => input.current?.focus()}
-          >
-            <MessageSquare size={17} />
-            {side && t("Council", "대화")}
-          </button>
-          <button className="nav-item" onClick={() => setModal("team")}>
-            <SquareTerminal size={17} />
-            {side && t("Agents", "에이전트")}
-          </button>
-          {side && (
-            <>
-              <div className="sidebar-section">
-                {t("PROJECT", "프로젝트")}
+            {side && (
+              <>
+                <div className="sidebar-section">
+                  {t("PROJECT", "프로젝트")}
+                  <button
+                    className="icon-button"
+                    title={t("Choose project", "프로젝트 선택")}
+                    onClick={() => void folderShortcut()}
+                  >
+                    <Plus size={15} />
+                  </button>
+                </div>
                 <button
-                  className="icon-button"
-                  title={t("Choose project", "프로젝트 선택")}
+                  className="project-item"
                   onClick={() => void folderShortcut()}
                 >
-                  <Plus size={15} />
+                  <Folder size={16} />
+                  <span>
+                    {state?.settings.folder.split(/[\\/]/).at(-1) ||
+                      t("Choose a folder", "폴더를 선택하세요")}
+                  </span>
                 </button>
-              </div>
+                <div className="project-sub">
+                  {t(
+                    "One conversation, shared context.",
+                    "대화의 맥락을 이어갑니다.",
+                  )}
+                </div>
+                <div className="sidebar-section">
+                  {t("YOUR TEAM", "참여 에이전트")}
+                </div>
+                <div className="team-list">
+                  {participants.map((a) => (
+                    <div key={a}>
+                      <AgentMark agent={a} small />
+                      <span>{names[a]}</span>
+                      <span className="team-role">
+                        {a === state?.settings.coder
+                          ? t("Lead", "담당")
+                          : t("Review", "검토")}
+                      </span>
+                    </div>
+                  ))}
+                  {!participants.length && (
+                    <button
+                      className="text-button"
+                      onClick={() => setModal("team")}
+                    >
+                      {t("Select your agents", "에이전트 선택")}
+                      <ChevronRight size={13} />
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+            <div className="sidebar-bottom">
+              <button className="nav-item" onClick={() => setModal("settings")}>
+                <Settings2 size={17} />
+                {side && t("Settings", "설정")}
+              </button>
+              {side && (
+                <div className="runtime-state">
+                  <span
+                    className={"status-dot " + (connected ? "online" : "")}
+                  />
+                  {t(
+                    connected ? "Engine connected" : "Connecting to engine",
+                    connected ? "엔진 연결됨" : "엔진 연결 중",
+                  )}
+                </div>
+              )}
+            </div>
+          </aside>
+          <main className="workspace">
+            <header className="workspace-header">
               <button
-                className="project-item"
+                className="breadcrumb"
+                title={state?.settings.folder}
                 onClick={() => void folderShortcut()}
               >
-                <Folder size={16} />
+                <Folder size={15} />
                 <span>
-                  {state?.settings.folder.split(/[\\/]/).at(-1) ||
-                    t("Choose a folder", "폴더를 선택하세요")}
+                  {state?.settings.folder.split(/[\\/]/).at(-1) || "Workspace"}
                 </span>
+                <ChevronDown size={13} />
               </button>
-              <div className="project-sub">
-                {t(
-                  "One conversation, shared context.",
-                  "대화의 맥락을 이어갑니다.",
-                )}
-              </div>
-              <div className="sidebar-section">
-                {t("YOUR TEAM", "참여 에이전트")}
-              </div>
-              <div className="team-list">
-                {participants.map((a) => (
-                  <div key={a}>
-                    <AgentMark agent={a} small />
-                    <span>{names[a]}</span>
-                    <span className="team-role">
-                      {a === state?.settings.coder
-                        ? t("Lead", "담당")
-                        : t("Review", "검토")}
-                    </span>
-                  </div>
-                ))}
-                {!participants.length && (
-                  <button
-                    className="text-button"
-                    onClick={() => setModal("team")}
-                  >
-                    {t("Select your agents", "에이전트 선택")}
-                    <ChevronRight size={13} />
+              {!!state?.settings.references.length && (
+                <span className="reference-count">
+                  +{state.settings.references.length}{" "}
+                  {t("references", "참고 폴더")}
+                </span>
+              )}
+              <div className="grow" />
+              {!!state?.messages.length && (
+                <button
+                  className={"view-button " + (split ? "selected" : "")}
+                  onClick={() => setSplit(!split)}
+                >
+                  {split ? <MessageSquare size={15} /> : <Columns2 size={15} />}
+                  <span>
+                    {split
+                      ? t("Conversation", "대화 보기")
+                      : t("Split view", "분할 보기")}
+                  </span>
+                </button>
+              )}
+            </header>
+            {error && (
+              <div className="error-banner" role="alert">
+                <span>{error}</span>
+                <button className="icon-button" onClick={() => setError("")}>
+                  <X size={14} />
+                </button>
+                {!state && (
+                  <button onClick={() => location.reload()}>
+                    {t("Retry", "다시 연결")}
                   </button>
                 )}
               </div>
-            </>
-          )}
-          <div className="sidebar-bottom">
-            <button className="nav-item" onClick={() => setModal("settings")}>
-              <Settings2 size={17} />
-              {side && t("Settings", "설정")}
-            </button>
-            {side && (
-              <div className="runtime-state">
-                <span className={"status-dot " + (connected ? "online" : "")} />
-                {t(
-                  connected ? "Engine connected" : "Connecting to engine",
-                  connected ? "엔진 연결됨" : "엔진 연결 중",
-                )}
+            )}
+            {!state ? (
+              <div className="empty">
+                <span className="brand-icon large">≋</span>
+                <h1>
+                  {t(
+                    "Getting your workspace ready",
+                    "작업 공간을 준비하고 있어요",
+                  )}
+                </h1>
+                <p>
+                  {t(
+                    "Connecting to the Rust execution engine…",
+                    "Rust 실행 엔진에 연결하는 중…",
+                  )}
+                </p>
               </div>
-            )}
-          </div>
-        </aside>
-        <main className="workspace">
-          <header className="workspace-header">
-            <button
-              className="breadcrumb"
-              title={state?.settings.folder}
-              onClick={() => void folderShortcut()}
-            >
-              <Folder size={15} />
-              <span>
-                {state?.settings.folder.split(/[\\/]/).at(-1) || "Workspace"}
-              </span>
-              <ChevronDown size={13} />
-            </button>
-            {!!state?.settings.references.length && (
-              <span className="reference-count">
-                +{state.settings.references.length}{" "}
-                {t("references", "참고 폴더")}
-              </span>
-            )}
-            <div className="grow" />
-            {!!state?.messages.length && (
-              <button
-                className={"view-button " + (split ? "selected" : "")}
-                onClick={() => setSplit(!split)}
-              >
-                {split ? <MessageSquare size={15} /> : <Columns2 size={15} />}
-                <span>
-                  {split
-                    ? t("Conversation", "대화 보기")
-                    : t("Split view", "분할 보기")}
-                </span>
-              </button>
-            )}
-          </header>
-          {error && (
-            <div className="error-banner" role="alert">
-              <span>{error}</span>
-              <button className="icon-button" onClick={() => setError("")}>
-                <X size={14} />
-              </button>
-              {!state && (
-                <button onClick={() => location.reload()}>
-                  {t("Retry", "다시 연결")}
-                </button>
-              )}
-            </div>
-          )}
-          {!state ? (
-            <div className="empty">
-              <span className="brand-icon large">≋</span>
-              <h1>
-                {t(
-                  "Getting your workspace ready",
-                  "작업 공간을 준비하고 있어요",
-                )}
-              </h1>
-              <p>
-                {t(
-                  "Connecting to the Rust execution engine…",
-                  "Rust 실행 엔진에 연결하는 중…",
-                )}
-              </p>
-            </div>
-          ) : (
-            <>
-              {!state.messages.length ? (
-                <div className="empty">
-                  <div className="hero-symbol">
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                  <div className="eyebrow">AGENT COUNCIL</div>
-                  <h1>
-                    {t(
-                      "Good ideas. Better together.",
-                      "함께 생각하고, 더 나은 코드로.",
-                    )}
-                  </h1>
-                  <p>
-                    {t(
-                      "One agent builds. Fresh perspectives make it better.",
-                      "코딩부터 검수까지, 하나의 대화에서 이어가세요.",
-                    )}
-                  </p>
-                  <div className="suggestions">
-                    {[
-                      [
-                        t("Explore this project", "프로젝트 분석"),
-                        t(
-                          "Analyze this project and explain its structure, current behavior, and useful improvements.",
-                          "이 프로젝트의 구조와 현재 동작을 분석하고 개선할 부분을 알려줘.",
-                        ),
-                      ],
-                      [
-                        t("Review recent changes", "변경 사항 검수"),
-                        t(
-                          "Review recent changes for mistakes and missing tests. Do not modify files.",
-                          "최근 변경 사항에 실수나 빠진 테스트가 있는지 검수해줘. 파일은 수정하지 마.",
-                        ),
-                      ],
-                    ].map(([label, prompt]) => (
-                      <button
-                        key={label}
-                        onClick={() => {
-                          changeDraft(prompt);
-                          input.current?.focus();
-                        }}
-                      >
-                        {label}
-                        <ArrowUpRight size={14} />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {state.job && (
-                    <div className="current-request">
-                      <span className="request-label">{t("YOU", "요청")}</span>
-                      <div title={state.job.request}>{state.job.request}</div>
-                      <span className={"job-badge " + state.job.status}>
-                        {busy ? (
-                          <span className="pulse-dot" />
-                        ) : (
-                          <CheckCheck size={12} />
-                        )}{" "}
-                        {t(
-                          (
-                            {
-                              running: "In progress",
-                              done: "Complete",
-                              failed: "Needs attention",
-                              cancelled: "Cancelled",
-                              interrupted: "Interrupted",
-                            } as Record<string, string>
-                          )[state.job.status] || state.job.status,
-                          (
-                            {
-                              running: "진행 중",
-                              done: "완료",
-                              failed: "확인 필요",
-                              cancelled: "취소됨",
-                              interrupted: "중단됨",
-                            } as Record<string, string>
-                          )[state.job.status] || state.job.status,
-                        )}
-                      </span>
+            ) : (
+              <>
+                {!state.messages.length ? (
+                  <div className="empty">
+                    <div className="hero-symbol">
+                      <span />
+                      <span />
+                      <span />
                     </div>
-                  )}
-                  {split ? (
-                    <div
-                      className="split-workspace"
-                      style={{
-                        gridTemplateColumns: `minmax(0, ${ratio}fr) 8px minmax(0, ${100 - ratio}fr)`,
-                      }}
-                    >
-                      <AgentPane
-                        agent={selectedLeft}
-                        options={options}
-                        choose={setLeft}
-                        state={state}
-                        events={activeActivity}
-                        t={t}
-                        now={now}
-                      />
-                      <div
-                        className="split-handle"
-                        role="separator"
-                        aria-label="Resize panes"
-                        onPointerDown={(e) => {
-                          const rect =
-                            e.currentTarget.parentElement!.getBoundingClientRect();
-                          e.currentTarget.setPointerCapture(e.pointerId);
-                          const target = e.currentTarget;
-                          const move = (event: PointerEvent) =>
-                            setRatio(
-                              Math.max(
-                                25,
-                                Math.min(
-                                  75,
-                                  (100 * (event.clientX - rect.left)) /
-                                    rect.width,
-                                ),
-                              ),
-                            );
-                          const stop = () => {
-                            target.removeEventListener("pointermove", move);
-                            target.removeEventListener("pointerup", stop);
-                          };
-                          target.addEventListener("pointermove", move);
-                          target.addEventListener("pointerup", stop);
-                        }}
-                      />
-                      <AgentPane
-                        agent={selectedRight}
-                        options={options}
-                        choose={setRight}
-                        state={state}
-                        events={activeActivity}
-                        t={t}
-                        now={now}
-                      />
-                    </div>
-                  ) : (
-                    <Conversation messages={state.messages} t={t} />
-                  )}
-                </>
-              )}
-              <div className="composer-area">
-                {!!state.messages.length && (
-                  <div className="agent-status-strip">
-                    {participants.map((a) => {
-                      const p = latestPhase(activeActivity, a);
-                      const active =
-                        busy && p && !["Done", "Failed"].includes(p.text);
-                      return (
+                    <div className="eyebrow">AGENT COUNCIL</div>
+                    <h1>
+                      {t(
+                        "Good ideas. Better together.",
+                        "함께 생각하고, 더 나은 코드로.",
+                      )}
+                    </h1>
+                    <p>
+                      {t(
+                        "One agent builds. Fresh perspectives make it better.",
+                        "코딩부터 검수까지, 하나의 대화에서 이어가세요.",
+                      )}
+                    </p>
+                    <div className="suggestions">
+                      {[
+                        [
+                          t("Explore this project", "프로젝트 분석"),
+                          t(
+                            "Analyze this project and explain its structure, current behavior, and useful improvements.",
+                            "이 프로젝트의 구조와 현재 동작을 분석하고 개선할 부분을 알려줘.",
+                          ),
+                        ],
+                        [
+                          t("Review recent changes", "변경 사항 검수"),
+                          t(
+                            "Review recent changes for mistakes and missing tests. Do not modify files.",
+                            "최근 변경 사항에 실수나 빠진 테스트가 있는지 검수해줘. 파일은 수정하지 마.",
+                          ),
+                        ],
+                      ].map(([label, prompt]) => (
                         <button
-                          key={a}
+                          key={label}
                           onClick={() => {
-                            setSplit(true);
-                            setLeft(a);
+                            changeDraft(prompt);
+                            input.current?.focus();
                           }}
                         >
-                          <AgentMark agent={a} small />
-                          <span>{names[a]}</span>
-                          <span
-                            className={
-                              "agent-state " +
-                              (active
-                                ? "working"
-                                : p?.text === "Failed"
-                                  ? "failed"
-                                  : "")
-                            }
-                          >
-                            {active && <span className="pulse-dot" />}
-                            {phaseLabel(p?.text || "", t)}
-                            {active && (
-                              <small>
-                                {Math.max(
-                                  0,
-                                  Math.floor((now - Date.parse(p.time)) / 1000),
-                                )}
-                                s
-                              </small>
-                            )}
-                          </span>
+                          {label}
+                          <ArrowUpRight size={14} />
                         </button>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
-                )}
-                <div className={"composer " + (busy ? "busy" : "")}>
-                  <textarea
-                    ref={input}
-                    value={draft}
-                    placeholder={t(
-                      "Ask, build, or get a fresh perspective…",
-                      "질문하거나, 만들거나, 새로운 의견을 구해보세요…",
+                ) : (
+                  <>
+                    {state.job && (
+                      <div className="current-request">
+                        <span className="request-label">
+                          {t("YOU", "요청")}
+                        </span>
+                        <div title={state.job.request}>{state.job.request}</div>
+                        <span className={"job-badge " + state.job.status}>
+                          {busy ? (
+                            <span className="pulse-dot" />
+                          ) : (
+                            <CheckCheck size={12} />
+                          )}{" "}
+                          {t(
+                            (
+                              {
+                                running: "In progress",
+                                done: "Complete",
+                                failed: "Needs attention",
+                                cancelled: "Cancelled",
+                                interrupted: "Interrupted",
+                              } as Record<string, string>
+                            )[state.job.status] || state.job.status,
+                            (
+                              {
+                                running: "진행 중",
+                                done: "완료",
+                                failed: "확인 필요",
+                                cancelled: "취소됨",
+                                interrupted: "중단됨",
+                              } as Record<string, string>
+                            )[state.job.status] || state.job.status,
+                          )}
+                        </span>
+                      </div>
                     )}
-                    onChange={(e) => changeDraft(e.target.value)}
-                    onCompositionStart={() => {
-                      composition.current = true;
-                    }}
-                    onCompositionEnd={(e) => {
-                      composition.current = false;
-                      changeDraft(e.currentTarget.value);
-                    }}
-                    onKeyDown={(e) => {
-                      if (
-                        e.key === "Enter" &&
-                        !e.shiftKey &&
-                        !e.nativeEvent.isComposing &&
-                        !composition.current &&
-                        e.keyCode !== 229
-                      ) {
-                        e.preventDefault();
-                        void send();
-                      }
-                    }}
-                    rows={3}
-                  />
-                  <div className="composer-tools">
-                    {chooser && (
-                      <>
-                        <div
-                          className="dismiss"
-                          onClick={() => setChooser(null)}
+                    {split ? (
+                      <div
+                        className="split-workspace"
+                        style={{
+                          gridTemplateColumns: `minmax(0, ${ratio}fr) 8px minmax(0, ${100 - ratio}fr)`,
+                        }}
+                      >
+                        <AgentPane
+                          agent={selectedLeft}
+                          options={options}
+                          choose={setLeft}
+                          state={state}
+                          events={activeActivity}
+                          t={t}
+                          now={now}
                         />
-                        <div className="quick-chooser dropdown" role="menu">
-                          <header>
-                            {chooser === "lead"
-                              ? t("Lead agent", "담당 AI")
-                              : t("Execution permissions", "실행 권한")}
-                          </header>
-                          {chooser === "lead"
-                            ? [...agents, null].map((a) => (
-                                <button
-                                  key={a || "none"}
-                                  onClick={() => {
-                                    setChooser(null);
-                                    void saveSettings({
-                                      ...state.settings,
-                                      coder: a,
-                                      reviewers:
-                                        state.settings.reviewers.filter(
-                                          (r) => r !== a,
-                                        ),
-                                    }).catch((e) => setError(String(e)));
-                                  }}
-                                >
-                                  {a && <AgentMark agent={a} small />}
-                                  <span>
-                                    {a
-                                      ? names[a]
-                                      : t("Review only", "검토만 진행")}
-                                  </span>
-                                  {state.settings.coder === a && (
-                                    <Check size={13} />
+                        <div
+                          className="split-handle"
+                          role="separator"
+                          aria-label="Resize panes"
+                          onPointerDown={(e) => {
+                            const rect =
+                              e.currentTarget.parentElement!.getBoundingClientRect();
+                            e.currentTarget.setPointerCapture(e.pointerId);
+                            const target = e.currentTarget;
+                            const move = (event: PointerEvent) =>
+                              setRatio(
+                                Math.max(
+                                  25,
+                                  Math.min(
+                                    75,
+                                    (100 * (event.clientX - rect.left)) /
+                                      rect.width,
+                                  ),
+                                ),
+                              );
+                            const stop = () => {
+                              target.removeEventListener("pointermove", move);
+                              target.removeEventListener("pointerup", stop);
+                            };
+                            target.addEventListener("pointermove", move);
+                            target.addEventListener("pointerup", stop);
+                          }}
+                        />
+                        <AgentPane
+                          agent={selectedRight}
+                          options={options}
+                          choose={setRight}
+                          state={state}
+                          events={activeActivity}
+                          t={t}
+                          now={now}
+                        />
+                      </div>
+                    ) : (
+                      <Conversation messages={state.messages} t={t} />
+                    )}
+                  </>
+                )}
+                <div className="composer-area">
+                  {!!state.messages.length && (
+                    <div className="agent-status-strip">
+                      {participants.map((a) => {
+                        const p = latestPhase(activeActivity, a);
+                        const active =
+                          busy && p && !["Done", "Failed"].includes(p.text);
+                        return (
+                          <button
+                            key={a}
+                            onClick={() => {
+                              setSplit(true);
+                              setLeft(a);
+                            }}
+                          >
+                            <AgentMark agent={a} small />
+                            <span>{names[a]}</span>
+                            <span
+                              className={
+                                "agent-state " +
+                                (active
+                                  ? "working"
+                                  : p?.text === "Failed"
+                                    ? "failed"
+                                    : "")
+                              }
+                            >
+                              {active && <span className="pulse-dot" />}
+                              {phaseLabel(p?.text || "", t)}
+                              {active && (
+                                <small>
+                                  {Math.max(
+                                    0,
+                                    Math.floor(
+                                      (now - Date.parse(p.time)) / 1000,
+                                    ),
                                   )}
-                                </button>
-                              ))
-                            : (["restricted", "coder", "all"] as const).map(
-                                (scope) => (
+                                  s
+                                </small>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div className={"composer " + (busy ? "busy" : "")}>
+                    <textarea
+                      ref={input}
+                      value={draft}
+                      placeholder={t(
+                        "Ask, build, or get a fresh perspective…",
+                        "질문하거나, 만들거나, 새로운 의견을 구해보세요…",
+                      )}
+                      onChange={(e) => changeDraft(e.target.value)}
+                      onCompositionStart={() => {
+                        composition.current = true;
+                      }}
+                      onCompositionEnd={(e) => {
+                        composition.current = false;
+                        changeDraft(e.currentTarget.value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (
+                          e.key === "Enter" &&
+                          !e.shiftKey &&
+                          !e.nativeEvent.isComposing &&
+                          !composition.current &&
+                          e.keyCode !== 229
+                        ) {
+                          e.preventDefault();
+                          void send();
+                        }
+                      }}
+                      rows={3}
+                    />
+                    <div className="composer-tools">
+                      {chooser && (
+                        <>
+                          <div
+                            className="dismiss"
+                            onClick={() => setChooser(null)}
+                          />
+                          <div className="quick-chooser dropdown" role="menu">
+                            <header>
+                              {chooser === "lead"
+                                ? t("Lead agent", "담당 AI")
+                                : t("Execution permissions", "실행 권한")}
+                            </header>
+                            {chooser === "lead"
+                              ? [...agents, null].map((a) => (
                                   <button
-                                    key={scope}
+                                    key={a || "none"}
                                     onClick={() => {
                                       setChooser(null);
                                       void saveSettings({
                                         ...state.settings,
-                                        permissions: scope,
+                                        coder: a,
+                                        reviewers:
+                                          state.settings.reviewers.filter(
+                                            (r) => r !== a,
+                                          ),
                                       }).catch((e) => setError(String(e)));
                                     }}
                                   >
-                                    <Shield size={14} />
+                                    {a && <AgentMark agent={a} small />}
                                     <span>
-                                      {scope === "all"
-                                        ? t(
-                                            "Full access · all agents",
-                                            "전체 권한 · 모든 AI",
-                                          )
-                                        : scope === "coder"
-                                          ? t(
-                                              "Full access · lead agent",
-                                              "전체 권한 · 담당 AI",
-                                            )
-                                          : t(
-                                              "Standard permissions",
-                                              "기본 권한",
-                                            )}
+                                      {a
+                                        ? names[a]
+                                        : t("Review only", "검토만 진행")}
                                     </span>
-                                    {state.settings.permissions === scope && (
+                                    {state.settings.coder === a && (
                                       <Check size={13} />
                                     )}
                                   </button>
-                                ),
-                              )}
-                          <div className="divider" />
-                          <button
-                            onClick={() => {
-                              setChooser(null);
-                              setModal("team");
-                            }}
-                          >
-                            <Settings2 size={13} />
-                            {t("Manage review team", "검토 AI 구성")}
-                          </button>
-                        </div>
-                      </>
-                    )}
-                    <button
-                      className="composer-agent"
-                      aria-label={t("Choose lead agent", "담당 AI 선택")}
-                      onClick={() =>
-                        setChooser(chooser === "lead" ? null : "lead")
-                      }
-                    >
-                      <AgentMark
-                        agent={state.settings.coder || "council"}
-                        small
-                      />
-                      {state.settings.coder
-                        ? names[state.settings.coder]
-                        : t("Review only", "검토만 진행")}
-                      <ChevronDown size={12} />
-                    </button>
-                    <button
-                      className={
-                        "permission-label " +
-                        (state.settings.permissions !== "restricted"
-                          ? "full"
-                          : "")
-                      }
-                      aria-label={t("Execution permissions", "실행 권한")}
-                      onClick={() =>
-                        setChooser(
-                          chooser === "permission" ? null : "permission",
-                        )
-                      }
-                    >
-                      <Shield size={12} />
-                      {t(
-                        state.settings.permissions === "all"
-                          ? "Full access · all"
-                          : state.settings.permissions === "coder"
-                            ? "Full access · coder"
-                            : "Standard",
-                        state.settings.permissions === "all"
-                          ? "전체 권한 · 모든 AI"
-                          : state.settings.permissions === "coder"
-                            ? "전체 권한 · 코더"
-                            : "기본 권한",
+                                ))
+                              : (["restricted", "coder", "all"] as const).map(
+                                  (scope) => (
+                                    <button
+                                      key={scope}
+                                      onClick={() => {
+                                        setChooser(null);
+                                        void saveSettings({
+                                          ...state.settings,
+                                          permissions: scope,
+                                        }).catch((e) => setError(String(e)));
+                                      }}
+                                    >
+                                      <Shield size={14} />
+                                      <span>
+                                        {scope === "all"
+                                          ? t(
+                                              "Full access · all agents",
+                                              "전체 권한 · 모든 AI",
+                                            )
+                                          : scope === "coder"
+                                            ? t(
+                                                "Full access · lead agent",
+                                                "전체 권한 · 담당 AI",
+                                              )
+                                            : t(
+                                                "Standard permissions",
+                                                "기본 권한",
+                                              )}
+                                      </span>
+                                      {state.settings.permissions === scope && (
+                                        <Check size={13} />
+                                      )}
+                                    </button>
+                                  ),
+                                )}
+                            <div className="divider" />
+                            <button
+                              onClick={() => {
+                                setChooser(null);
+                                setModal("team");
+                              }}
+                            >
+                              <Settings2 size={13} />
+                              {t("Manage review team", "검토 AI 구성")}
+                            </button>
+                          </div>
+                        </>
                       )}
-                    </button>
-                    <div className="grow" />
-                    <span className="key-hint">Shift ↵</span>
-                    {busy ? (
                       <button
-                        className="send-button stop"
-                        title={t("Stop task", "작업 중지")}
+                        className="composer-agent"
+                        aria-label={t("Choose lead agent", "담당 AI 선택")}
                         onClick={() =>
-                          void api(`/jobs/${state.job!.id}/cancel`, {}).catch(
-                            (e) => setError(String(e)),
+                          setChooser(chooser === "lead" ? null : "lead")
+                        }
+                      >
+                        <AgentMark
+                          agent={state.settings.coder || "council"}
+                          small
+                        />
+                        {state.settings.coder
+                          ? names[state.settings.coder]
+                          : t("Review only", "검토만 진행")}
+                        <ChevronDown size={12} />
+                      </button>
+                      <button
+                        className={
+                          "permission-label " +
+                          (state.settings.permissions !== "restricted"
+                            ? "full"
+                            : "")
+                        }
+                        aria-label={t("Execution permissions", "실행 권한")}
+                        onClick={() =>
+                          setChooser(
+                            chooser === "permission" ? null : "permission",
                           )
                         }
                       >
-                        <Square size={14} fill="currentColor" />
+                        <Shield size={12} />
+                        {t(
+                          state.settings.permissions === "all"
+                            ? "Full access · all"
+                            : state.settings.permissions === "coder"
+                              ? "Full access · coder"
+                              : "Standard",
+                          state.settings.permissions === "all"
+                            ? "전체 권한 · 모든 AI"
+                            : state.settings.permissions === "coder"
+                              ? "전체 권한 · 코더"
+                              : "기본 권한",
+                        )}
                       </button>
-                    ) : (
-                      <button
-                        className="send-button"
-                        aria-label={t("Send", "보내기")}
-                        disabled={!draft.trim() || sending || !connected}
-                        onClick={() => void send()}
-                      >
-                        <ArrowUp size={19} />
-                      </button>
-                    )}
+                      <div className="grow" />
+                      <span className="key-hint">Shift ↵</span>
+                      {busy ? (
+                        <button
+                          className="send-button stop"
+                          title={t("Stop task", "작업 중지")}
+                          onClick={() =>
+                            void api(`/jobs/${state.job!.id}/cancel`, {}).catch(
+                              (e) => setError(String(e)),
+                            )
+                          }
+                        >
+                          <Square size={14} fill="currentColor" />
+                        </button>
+                      ) : (
+                        <button
+                          className="send-button"
+                          aria-label={t("Send", "보내기")}
+                          disabled={!draft.trim() || sending || !connected}
+                          onClick={() => void send()}
+                        >
+                          <ArrowUp size={19} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="composer-caption">
+                    <span>
+                      {busy
+                        ? t(
+                            "Work continues even when you close this window.",
+                            "창을 닫아도 작업은 계속됩니다.",
+                          )
+                        : t(
+                            "Enter to send · Shift + Enter for a new line",
+                            "Enter 전송 · Shift + Enter 줄바꿈",
+                          )}
+                    </span>
+                    <span>
+                      {t("Local engine · Rust", "로컬 실행 엔진 · Rust")}
+                    </span>
                   </div>
                 </div>
-                <div className="composer-caption">
-                  <span>
-                    {busy
-                      ? t(
-                          "Work continues even when you close this window.",
-                          "창을 닫아도 작업은 계속됩니다.",
-                        )
-                      : t(
-                          "Enter to send · Shift + Enter for a new line",
-                          "Enter 전송 · Shift + Enter 줄바꿈",
-                        )}
-                  </span>
-                  <span>
-                    {t("Local engine · Rust", "로컬 실행 엔진 · Rust")}
-                  </span>
-                </div>
-              </div>
-            </>
-          )}
-        </main>
-      </div>
-      <footer className="statusbar">
-        <button
-          className="usage-toggle"
-          onClick={() => {
-            setUsageAgent("");
-            setUsage(!usage);
-          }}
-        >
-          <ActivityIcon size={12} />
-          {t("Usage", "사용량")}
-          <ChevronDown size={11} />
-        </button>
-        <div className="quota-strip">
-          {agents.map((a) => {
-            const quota = windows(a, state?.limits[a]);
-            const w = quota[0];
-            const meta = state?.limits[a] as
-              { status?: string; message?: string } | undefined;
-            return (
-              <button
-                key={a}
-                aria-label={names[a] + t(" usage", " 사용량")}
-                title={
-                  names[a] +
-                  ": " +
-                  (w
-                    ? `${w.label} · ${Math.round(w.used)}% used`
-                    : meta?.message || "Checking usage…")
-                }
-                onClick={() => {
-                  setUsageAgent(a);
-                  setUsage(true);
-                }}
-              >
-                <AgentMark agent={a} small />
-                <span className="quota-name">
-                  {names[a]
-                    .replace(" Code", "")
-                    .replace(" Agent", "")
-                    .replace(" CLI", "")}
-                </span>
-                {w ? (
-                  <>
-                    <span
-                      className={"tiny-meter " + (w.used >= 85 ? "danger" : "")}
-                    >
-                      <i style={{ width: `${w.used}%` }} />
-                    </span>
-                    <span>{Math.round(w.used)}%</span>
-                    <small>{countdown(w.reset)}</small>
-                  </>
-                ) : (
-                  <span>
-                    {meta?.status === "loading"
-                      ? "…"
-                      : meta?.status === "signed_out"
-                        ? t("Sign in", "로그인")
-                        : meta?.status === "unlimited"
-                          ? "∞"
-                          : "—"}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <div className="grow" />
-        <span className="connection-indicator">
-          {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
-          <span>
-            {t(
-              connected ? "Local" : "Reconnecting",
-              connected ? "로컬" : "재연결 중",
+              </>
             )}
-          </span>
-        </span>
-      </footer>
-      {usage && state && (
-        <>
-          <div className="dismiss" onClick={() => setUsage(false)} />
-          <Usage
-            state={state}
-            selected={usageAgent}
-            t={t}
-            close={() => setUsage(false)}
-            refresh={async () => {
-              await api("/usage/refresh", {});
-              await refresh();
+          </main>
+        </div>
+        <footer className="statusbar">
+          <button
+            className="usage-toggle"
+            onClick={() => {
+              setUsageAgent("");
+              setUsage(!usage);
             }}
+          >
+            <ActivityIcon size={12} />
+            {t("Usage", "사용량")}
+            <ChevronDown size={11} />
+          </button>
+          <div className="quota-strip">
+            {agents.map((a) => {
+              const quota = windows(a, state?.limits[a]);
+              const w = summaryWindow(quota);
+              const meta = state?.limits[a] as
+                { status?: string; message?: string } | undefined;
+              return (
+                <button
+                  key={a}
+                  className={meta?.status === "stale" ? "quota-is-stale" : ""}
+                  aria-label={names[a] + t(" usage", " 사용량")}
+                  title={
+                    names[a] +
+                    ": " +
+                    (meta?.status === "stale"
+                      ? t("Last known · ", "이전 조회값 · ")
+                      : "") +
+                    (w
+                      ? quota
+                          .map(
+                            (q) =>
+                              `${q.label} · ${percent(q.used)} used · ${countdown(q.reset)}`,
+                          )
+                          .join("\n")
+                      : meta?.message || "Checking usage…")
+                  }
+                  onClick={() => {
+                    setUsageAgent(a);
+                    setUsage(true);
+                  }}
+                >
+                  <AgentMark agent={a} small />
+                  <span className="quota-name">
+                    {names[a]
+                      .replace(" Code", "")
+                      .replace(" Agent", "")
+                      .replace(" CLI", "")}
+                  </span>
+                  {w ? (
+                    <>
+                      <span
+                        className={
+                          "tiny-meter " + (w.used >= 85 ? "danger" : "")
+                        }
+                      >
+                        <i style={{ width: `${w.used}%` }} />
+                      </span>
+                      <span className="quota-period">
+                        {quotaLabel(w.label)}
+                      </span>
+                      <span>{percent(w.used)}</span>
+                      <small>{countdown(w.reset)}</small>
+                    </>
+                  ) : (
+                    <span>
+                      {meta?.status === "loading"
+                        ? "…"
+                        : meta?.status === "signed_out"
+                          ? t("Sign in", "로그인")
+                          : meta?.status === "unlimited"
+                            ? "∞"
+                            : "—"}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div className="grow" />
+          <span className="connection-indicator">
+            {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
+            <span>
+              {t(
+                connected ? "Local" : "Reconnecting",
+                connected ? "로컬" : "재연결 중",
+              )}
+            </span>
+          </span>
+        </footer>
+        {usage && state && (
+          <>
+            <div className="dismiss" onClick={() => setUsage(false)} />
+            <Usage
+              state={state}
+              selected={usageAgent}
+              t={t}
+              close={() => setUsage(false)}
+              refresh={async () => {
+                await api("/usage/refresh", {});
+                await refresh();
+              }}
+            />
+          </>
+        )}
+        {(modal === "settings" || modal === "team") && state && (
+          <SettingsModal
+            key={modal}
+            onlyAgents={modal === "team"}
+            initial={state.settings}
+            detected={state.agents}
+            save={saveSettings}
+            close={closeModal}
+            t={t}
           />
-        </>
-      )}
-      {(modal === "settings" || modal === "team") && state && (
-        <SettingsModal
-          key={modal}
-          onlyAgents={modal === "team"}
-          initial={state.settings}
-          detected={state.agents}
-          save={saveSettings}
-          close={closeModal}
-          t={t}
-        />
-      )}
-      {modal === "update" && <UpdateModal close={closeModal} t={t} />}
-    </div>
+        )}
+        {modal === "update" && <UpdateModal close={closeModal} t={t} />}
+      </div>
+    </FilePreviewProvider>
   );
 }
 
@@ -1261,7 +1339,11 @@ function Conversation({ messages, t }: { messages: Message[]; t: Translate }) {
                   <Copy size={13} />
                 </button>
               </div>
-              <Markdown text={m.text} />
+              {m.stage === "error" ? (
+                <AgentProblem message={m.text} agent={m.role} t={t} />
+              ) : (
+                <Markdown text={m.text} />
+              )}
             </article>
           ),
         )}
@@ -1303,6 +1385,7 @@ function AgentPane({
 }) {
   const [log, setLog] = useState(false),
     [expanded, setExpanded] = useState(false);
+  const closeNote = useCallback(() => setExpanded(false), []);
   const ref = useRef<HTMLDivElement>(null),
     follow = useRef(true);
   const start = state.messages.map((m) => m.role).lastIndexOf("You");
@@ -1314,7 +1397,28 @@ function AgentPane({
     (e) =>
       e.agent === agent && ["note", "tool", "phase", "error"].includes(e.kind),
   );
-  const note = notes.filter((e) => e.kind === "note").at(-1);
+  const rawNote = notes.filter((e) => e.kind === "note").at(-1);
+  const archived =
+    rawNote && state.job?.status !== "running"
+      ? state.messages
+          .slice()
+          .reverse()
+          .find(
+            (m) =>
+              m.stage === rawNote.stage &&
+              (m.role === agent ||
+                (rawNote.stage === "report" && m.role === "council")),
+          )
+      : undefined;
+  // v3.0 stored only the tail of notes; recover finished text from its report.
+  const note =
+    rawNote?.data == null && rawNote
+      ? {
+          ...rawNote,
+          text: archived?.text || rawNote.text,
+          data: { truncated: !archived },
+        }
+      : rawNote;
   useLayoutEffect(() => {
     if (follow.current && ref.current)
       ref.current.scrollTop = ref.current.scrollHeight;
@@ -1418,7 +1522,11 @@ function AgentPane({
           messages.map((m, i) => (
             <article key={i} className="pane-report">
               <div className="report-stage">{stageLabel(m.stage, t)}</div>
-              <Markdown text={m.text} />
+              {m.stage === "error" ? (
+                <AgentProblem message={m.text} agent={agent} t={t} />
+              ) : (
+                <Markdown text={m.text} />
+              )}
             </article>
           ))
         ) : (
@@ -1447,170 +1555,50 @@ function AgentPane({
         )}
       </div>
       {note && (
-        <div className={"work-note " + (expanded ? "expanded" : "")}>
+        <div className="work-note">
           <button onClick={() => setExpanded(!expanded)}>
-            <span>{t("Latest note", "최근 메모")}</span>
-            <ChevronDown size={12} />
+            <span>
+              <span className={active ? "pulse-dot" : "status-dot"} />
+              {t("Working notes", "작업 노트")}
+            </span>
+            <time>
+              {new Date(note.time).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </time>
+            <span className="note-open">
+              {t("Read full note", "전체 보기")} <ArrowUpRight size={12} />
+            </span>
           </button>
-          <p title={note.text}>{note.text}</p>
+          <div className="note-excerpt">
+            <Markdown text={note.text} />
+          </div>
         </div>
+      )}
+      {expanded && note && (
+        <Modal
+          title={t("Working notes", "작업 노트")}
+          subtitle={`${names[agent] || agent} · ${stageLabel(note.stage, t)} · ${new Date(note.time).toLocaleTimeString()}`}
+          close={closeNote}
+          wide
+        >
+          <div className="note-full scrollable">
+            <Markdown text={note.text} />
+            {(note.data as { truncated?: boolean } | null)?.truncated && (
+              <p className="preview-limit">
+                {t(
+                  "This preview is limited to 64,000 characters. The final report is saved separately.",
+                  "이 미리보기는 64,000자까지 보관됩니다. 최종 결과는 별도로 저장됩니다.",
+                )}
+              </p>
+            )}
+          </div>
+        </Modal>
       )}
     </section>
   );
 }
-function Usage({
-  state,
-  selected = "",
-  t,
-  close,
-  refresh,
-}: {
-  state: Snapshot;
-  selected?: string;
-  t: Translate;
-  close: () => void;
-  refresh: () => Promise<void>;
-}) {
-  const [detail, setDetail] = useState(selected),
-    [loading, setLoading] = useState(false),
-    [error, setError] = useState("");
-  const links: Record<string, string> = {
-    claude: "https://claude.ai/settings/usage",
-    agent: "https://cursor.com/dashboard/usage",
-    grok: "https://grok.com/dashboard",
-    gemini: "https://geminicli.com/docs/resources/quota-and-pricing/",
-  };
-  return (
-    <div className="usage-popover dropdown">
-      <header>
-        <strong>{t("Usage", "사용량")}</strong>
-        <span className="grow" />
-        <button
-          className="icon-button"
-          title={t("Refresh available limits", "조회 가능한 한도 새로고침")}
-          disabled={loading}
-          onClick={() => {
-            setLoading(true);
-            void refresh()
-              .catch((e) => setError(String(e)))
-              .finally(() => setLoading(false));
-          }}
-        >
-          <RefreshCw size={13} className={loading ? "spin" : ""} />
-        </button>
-        <button className="icon-button" onClick={close}>
-          <X size={14} />
-        </button>
-      </header>
-      <div className="usage-scroll scrollable">
-        {agents.map((a) => {
-          const ws = windows(a, state.limits[a]);
-          const highest = ws[0];
-          const meta = state.limits[a] as
-            | {
-                status?: string;
-                message?: string;
-                source?: string;
-                updated_at?: string;
-              }
-            | undefined;
-          const u = state.usage?.[a];
-          return (
-            <div className="usage-agent" key={a}>
-              <button onClick={() => setDetail(detail === a ? "" : a)}>
-                <AgentMark agent={a} small />
-                <strong>{names[a]}</strong>
-                <span className="grow" />
-                {highest && <small>{countdown(highest.reset)}</small>}
-                <span className={highest?.used >= 85 ? "danger-text" : ""}>
-                  {highest
-                    ? `${Math.round(highest.used)}%`
-                    : meta?.status === "loading"
-                      ? t("Checking…", "조회 중…")
-                      : meta?.status === "signed_out"
-                        ? t("Sign in", "로그인 필요")
-                        : meta?.status === "unlimited"
-                          ? "∞"
-                          : t("Unavailable", "조회 불가")}
-                </span>
-                <ChevronRight
-                  size={13}
-                  className={detail === a ? "rotate" : ""}
-                />
-              </button>
-              {highest && (
-                <div className="usage-meter">
-                  <i style={{ width: `${highest.used}%` }} />
-                </div>
-              )}
-              {detail === a && (
-                <div className="usage-detail">
-                  {ws.map((w, i) => (
-                    <div className="usage-window" key={i}>
-                      <span>{w.label}</span>
-                      <strong>
-                        {Math.round(w.used)}% {t("used", "사용")}
-                      </strong>
-                      <small>
-                        {Math.round(100 - w.used)}% {t("left", "남음")} ·{" "}
-                        {countdown(w.reset)}
-                      </small>
-                    </div>
-                  ))}
-                  {!ws.length && (
-                    <p>
-                      {meta?.message ||
-                        t(
-                          "Checking account usage…",
-                          "계정 사용량을 확인하고 있어요…",
-                        )}
-                    </p>
-                  )}
-                  {meta?.updated_at && (
-                    <p className="usage-source">
-                      {t("Checked", "확인 시각")}{" "}
-                      {new Date(meta.updated_at).toLocaleTimeString()} ·{" "}
-                      {meta.source || t("Local sign-in", "기존 로그인")}
-                    </p>
-                  )}
-                  <div className="token-totals">
-                    <span>{t("Project tokens", "프로젝트 토큰")}</span>
-                    <span>
-                      ↓ {u?.input_tokens?.toLocaleString() ?? "—"} · ↑{" "}
-                      {u?.output_tokens?.toLocaleString() ?? "—"}
-                    </span>
-                  </div>
-                  {links[a] && (
-                    <button
-                      className="text-button"
-                      onClick={() => void external(links[a])}
-                    >
-                      {t("Provider usage", "제공사 사용량")}
-                      <ArrowUpRight size={12} />
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <footer>
-        {t(
-          "Percentages show used account quota.",
-          "%는 계정 한도 사용률입니다.",
-        )}
-        <br />
-        {t(
-          "Project token counts are shown inside each account.",
-          "프로젝트 토큰 누계는 각 계정 상세에 표시됩니다.",
-        )}
-      </footer>
-      {error && <p className="danger-text">{error}</p>}
-    </div>
-  );
-}
-
 function SettingsModal({
   initial,
   onlyAgents = false,

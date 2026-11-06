@@ -18,6 +18,12 @@ Open **Agents** to choose an optional lead agent and optional reviewers. The com
 - Messages, project drafts, job state and events persist in SQLite under `%LOCALAPPDATA%\AgentCouncil`. Existing v2 settings and per-folder chat JSON are imported without deleting the originals. Recent transcript excerpts carry into follow-up requests.
 - The bottom usage strip shows **account quota used** and reset countdowns. Click any agent for its quota windows, source, refresh time and separately reported project token counts. Existing local CLI/IDE logins are reused: Codex and Antigravity query their CLIs; Claude, Grok, Cursor and Gemini query the providers' usage endpoints. Credentials remain in memory and are not returned to the UI. Missing sign-ins, unavailable quotas and errors are explicit; token counts are never substituted for account percentages. Provider endpoint changes may require adapter updates. See [protocol acknowledgments](docs/THIRD_PARTY_NOTICES.md).
 
+## Reading and usage
+
+The footer labels the period of the highest reported usage percentage (`5h`, `wk`, `mo` or a model group). The popover shows every reported window. A CLI's partial limit event preserves other known windows; lower stale snapshots for the same period are ignored. Failed refreshes retain the last known quota with an explicit stale label. Usage refreshes after work finishes. Cursor IDE quota access does not imply Cursor Agent CLI is signed in; `agent login` is a separate CLI action.
+
+Working notes keep complete snapshots rather than the last few characters. Choose **Read full note** for Markdown, tables and clickable file references. Project/reference file links open a read-only preview at the specified `:line` or `#Lline`, including Windows paths. Previews cap rendering at 512 KiB and 3,000 lines, reject binary content and enforce configured folder boundaries. Final reports remain separate from bounded working notes.
+
 ## Updates
 
 Choose **App menu → Check for updates**. Installation is manual, verifies GitHub's SHA-256 asset digest, and restarts the app. Finish or cancel all work before updating. An upgrade from the Python app can use its existing update button to install the new executable.

@@ -1,6 +1,6 @@
 [package]
 name = "agent-council"
-version = "3.0.0"
+version = "3.1.0"
 edition = "2021"
 default-run = "AgentCouncil"
 
@@ -34,6 +34,7 @@ base64 = "0.22"
 fs2 = "0.4"
 regex = "1"
 aes-gcm = "0.10"
+urlencoding = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_JobObjects", "Win32_System_Threading", "Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography"] }

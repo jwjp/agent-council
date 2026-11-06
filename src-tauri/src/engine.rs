@@ -174,6 +174,7 @@ impl Engine {
             let _ = engine.store.update_job(&done);
             engine.active.lock().unwrap().remove(&work.id);
             engine.event(&work, "", "done", &done.status, "", Value::Null);
+            tokio::spawn(engine.refresh_limits());
         });
         Ok(job)
     }
@@ -216,9 +217,14 @@ impl Engine {
             cancel,
             |kind, text, data| {
                 if kind == "limits" {
-                    self.limits.lock().unwrap().insert(
+                    let mut limits = self.limits.lock().unwrap();
+                    let old = limits.get(agent).cloned().unwrap_or(Value::Null);
+                    limits.insert(
                         agent.into(),
-                        crate::quota::normalize(agent, &data, "CLI event"),
+                        crate::quota::merge_event(
+                            &old,
+                            crate::quota::normalize(agent, &data, "CLI event"),
+                        ),
                     );
                 }
                 self.event(job, agent, kind, text, stage, data);
@@ -452,6 +458,18 @@ impl Engine {
             return;
         }
         let folder = self.settings.lock().unwrap().folder.clone();
+        for value in self.limits.lock().unwrap().values_mut() {
+            value["refreshing"] = json!(true);
+        }
+        let refresh_notice = Job {
+            id: String::new(),
+            folder: folder.clone(),
+            request: String::new(),
+            request_id: String::new(),
+            status: String::new(),
+            time: now(),
+        };
+        self.event(&refresh_notice, "", "limits", "refreshing", "", Value::Null);
         futures_util::future::join_all(AGENTS.iter().map(|&name| async {
             match crate::quota::fetch(name, &folder).await {
                 Ok(value) => {
@@ -459,10 +477,12 @@ impl Engine {
                     self.limit_errors.lock().unwrap().remove(name);
                 }
                 Err(error) => {
-                    self.limits
-                        .lock()
-                        .unwrap()
-                        .insert(name.into(), crate::quota::failure(&error.to_string()));
+                    let mut limits = self.limits.lock().unwrap();
+                    let old = limits.get(name).cloned().unwrap_or(Value::Null);
+                    limits.insert(
+                        name.into(),
+                        crate::quota::failed_refresh(&old, &error.to_string()),
+                    );
                     self.limit_errors
                         .lock()
                         .unwrap()

@@ -12,6 +12,8 @@ const root = resolve(process.argv[3] || ".runtime-test/ui"),
   project = join(root, "project");
 mkdirSync(bin, { recursive: true });
 mkdirSync(project, { recursive: true });
+if (!existsSync(join(project, "main.rs")))
+  writeFileSync(join(project, "main.rs"), "fn main() {}\n// 한글 파일 내용\n");
 const compiled = spawnSync(
   "rustc",
   ["tests/fixture_agent.rs", "-o", join(bin, "fixture.exe")],
@@ -27,7 +29,7 @@ writeFileSync(
     coder: "claude",
     reviewers: ["codex", "grok"],
     permissions: "all",
-    language: "English",
+    language: process.env.COUNCIL_PREVIEW_LANGUAGE || "English",
   }),
 );
 const gui = spawn(

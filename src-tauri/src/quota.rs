@@ -38,6 +38,63 @@ fn window(label: &str, used: f64, reset: &Value) -> Value {
 fn result(windows: Vec<Value>, source: &str) -> Value {
     json!({"status":if windows.is_empty(){"unavailable"}else{"ok"},"windows":windows,"source":source,"updated_at":crate::model::now(),"message":if windows.is_empty(){"The provider did not report a quota for this account."}else{""}})
 }
+fn claude_label(raw: &str) -> &str {
+    match raw {
+        "five_hour" | "fiveHour" | "session" => "5 hours",
+        "seven_day" | "sevenDay" | "weekly" => "Weekly",
+        _ => raw,
+    }
+}
+pub fn merge_event(previous: &Value, incoming: Value) -> Value {
+    let Some(updates) = incoming["windows"].as_array() else {
+        return previous.clone();
+    };
+    if updates.is_empty() {
+        return previous.clone();
+    }
+    let mut out = previous.clone();
+    let mut all = previous["windows"].as_array().cloned().unwrap_or_default();
+    for update in updates {
+        if let Some(old) = all.iter_mut().find(|w| w["label"] == update["label"]) {
+            let stale = match (old["reset"].as_f64(), update["reset"].as_f64()) {
+                (Some(a), Some(b)) if a > chrono::Utc::now().timestamp() as f64 => {
+                    b < a - 60.0
+                        || ((a - b).abs() <= 60.0 && update["used"].as_f64() < old["used"].as_f64())
+                }
+                _ => false,
+            };
+            if !stale {
+                *old = update.clone();
+            }
+        } else {
+            all.push(update.clone());
+        }
+    }
+    out["windows"] = json!(all);
+    out["status"] = json!("ok");
+    out["message"] = json!("");
+    out["updated_at"] = incoming["updated_at"].clone();
+    out["refreshing"] = json!(false);
+    if out["source"].is_null() {
+        out["source"] = incoming["source"].clone();
+    }
+    out
+}
+pub fn failed_refresh(previous: &Value, error: &str) -> Value {
+    if previous["windows"]
+        .as_array()
+        .is_some_and(|w| !w.is_empty())
+    {
+        let mut value = previous.clone();
+        value["status"] = json!("stale");
+        value["refreshing"] = json!(false);
+        value["message"] = json!(error);
+        value["attempted_at"] = json!(crate::model::now());
+        value
+    } else {
+        failure(error)
+    }
+}
 pub fn failure(message: &str) -> Value {
     json!({"status":if message.contains("sign-in")||message.contains("sign in"){"signed_out"}else{"error"},"windows":[],"updated_at":crate::model::now(),"message":message})
 }
@@ -53,23 +110,29 @@ pub fn normalize(agent: &str, v: &Value, source: &str) -> Value {
             } else {
                 &v["rateLimitsByLimitId"]["codex"]
             };
-            for key in ["primary", "secondary"] {
-                let w = &limits[key];
+            for (i, key) in ["primary", "secondary"].iter().enumerate() {
+                let w = &limits[*key];
                 if let Some(used) = number(&w["usedPercent"]) {
-                    let label = if number(&w["windowDurationMins"]) == Some(10080.0) {
-                        "Weekly"
-                    } else {
-                        "5 hours"
+                    let duration = number(&w["windowDurationMins"]);
+                    let label = match duration {
+                        Some(n) if (n - 10080.0).abs() <= 1.0 => "Weekly",
+                        Some(n) if (n - 300.0).abs() <= 1.0 => "5 hours",
+                        _ if i == 1 => "Weekly",
+                        _ => "5 hours",
                     };
                     windows.push(window(label, used, &w["resetsAt"]));
                 }
             }
+            windows.sort_by_key(|w| if w["label"] == "5 hours" { 0 } else { 1 });
         }
         "agy" => {
             if let Some(groups) = v.as_array() {
                 for group in groups {
                     if let Some(buckets) = group["buckets"].as_array() {
                         for b in buckets {
+                            if b["disabled"] == true {
+                                continue;
+                            }
                             if let Some(left) = number(&b["remaining_fraction"]) {
                                 let label = format!(
                                     "{} · {}",
@@ -94,13 +157,13 @@ pub fn normalize(agent: &str, v: &Value, source: &str) -> Value {
             if let Some(unified) = v["unifiedWindows"].as_object() {
                 for (key, w) in unified {
                     if let Some(fraction) = number(&w["utilization"]) {
-                        windows.push(window(key, 100.0 * fraction, &w["resetsAt"]));
+                        windows.push(window(claude_label(key), 100.0 * fraction, &w["resetsAt"]));
                     }
                 }
             } else if v.get("rateLimitType").is_some() {
                 if let Some(fraction) = number(&v["utilization"]) {
                     windows.push(window(
-                        v["rateLimitType"].as_str().unwrap_or("Quota"),
+                        claude_label(v["rateLimitType"].as_str().unwrap_or("Quota")),
                         fraction * 100.0,
                         &v["resetsAt"],
                     ));
@@ -237,6 +300,7 @@ pub async fn fetch(agent: &str, folder: &str) -> Result<Value> {
         .redirect(reqwest::redirect::Policy::none())
         .user_agent("AgentCouncil/3")
         .build()?;
+    let mut auth_source = None;
     let data = match agent {
         "claude" => {
             let root = std::env::var_os("CLAUDE_CONFIG_DIR")
@@ -303,6 +367,11 @@ pub async fn fetch(agent: &str, folder: &str) -> Result<Value> {
             let mut token = read(root.join("auth.json"))
                 .ok()
                 .and_then(|v| v["accessToken"].as_str().map(str::to_owned));
+            auth_source = Some(if token.is_some() {
+                "Cursor Agent CLI"
+            } else {
+                "Cursor IDE"
+            });
             if token.is_none() {
                 let path = root.join("User/globalStorage/state.vscdb");
                 if let Ok(db) = rusqlite::Connection::open_with_flags(
@@ -407,7 +476,11 @@ pub async fn fetch(agent: &str, folder: &str) -> Result<Value> {
         }
         _ => anyhow::bail!("Unknown usage provider"),
     };
-    Ok(normalize(agent, &data, "Existing local sign-in"))
+    let mut result = normalize(agent, &data, "Existing local sign-in");
+    if let Some(source) = auth_source {
+        result["auth_source"] = json!(source);
+    }
+    Ok(result)
 }
 fn decrypt_cursor_token(root: &Path, token: &str) -> Result<String> {
     let Some(encoded) = token.strip_prefix("cursor-safe-storage:v1:") else {
@@ -504,6 +577,49 @@ mod tests {
             "test",
         );
         assert_eq!(v["windows"][0]["used"], 44.0);
+    }
+    #[test]
+    fn partial_claude_event_retains_weekly_and_ignores_older_snapshot() {
+        let future = chrono::Utc::now().timestamp() + 10000;
+        let previous = normalize(
+            "claude",
+            &json!({"five_hour":{"utilization":44,"resets_at":future},"seven_day":{"utilization":79,"resets_at":future+300000}}),
+            "OAuth",
+        );
+        let event = normalize(
+            "claude",
+            &json!({"rateLimitType":"five_hour","utilization":0.12,"resetsAt":future}),
+            "CLI event",
+        );
+        let merged = merge_event(&previous, event);
+        assert_eq!(merged["windows"].as_array().unwrap().len(), 2);
+        assert_eq!(merged["windows"][0]["used"], 44.0);
+        assert_eq!(merged["windows"][1]["used"], 79.0);
+        let stale = failed_refresh(&merged, "Usage lookup is rate limited.");
+        assert_eq!(stale["status"], "stale");
+        assert_eq!(stale["updated_at"], merged["updated_at"]);
+    }
+    #[test]
+    fn codex_duration_selects_the_window_not_the_position() {
+        let value = normalize(
+            "codex",
+            &json!({"rateLimits":{"primary":{"usedPercent":79,"windowDurationMins":10079},"secondary":{"usedPercent":1,"windowDurationMins":301}}}),
+            "RPC",
+        );
+        assert_eq!(value["windows"][0]["label"], "5 hours");
+        assert_eq!(value["windows"][0]["used"], 1.0);
+        assert_eq!(value["windows"][1]["label"], "Weekly");
+        assert_eq!(value["windows"][1]["used"], 79.0);
+    }
+    #[test]
+    fn disabled_antigravity_buckets_do_not_invent_headroom() {
+        let value = normalize(
+            "agy",
+            &json!([{"name":"Models","buckets":[{"remaining_fraction":1,"disabled":true},{"remaining_fraction":0.2,"window":"weekly"}]}]),
+            "CLI",
+        );
+        assert_eq!(value["windows"].as_array().unwrap().len(), 1);
+        assert_eq!(value["windows"][0]["used"], 80.0);
     }
     #[test]
     fn missing_grok_percent_is_never_zero() {

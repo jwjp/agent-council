@@ -11,6 +11,7 @@ All requests and events are JSON. Routes begin `/v1`. HTTP errors return `{ "err
 | GET /v1/state | Settings, detected CLIs, current project's messages, job, token totals, account limits, durable event cursor |
 | PUT /v1/settings | Save coder (nullable), reviewers, folder, references, language, appearance and permissions |
 | PUT /v1/draft | Save `{folder,text}` independently of agent work |
+| POST /v1/files/read | Read `{target}` from the selected project or references; supports local file links and line suffixes, returns `{path,name,text,line,start_line,truncated}` |
 | POST /v1/jobs | Start `{request,request_id}`; repeat request_id returns the same accepted job |
 | POST /v1/jobs/{id}/cancel | Cancel a running job including its CLI process trees |
 | GET /v1/events?after=N | SSE event replay followed by live events; persisted monotonic IDs permit reconnect |
@@ -22,7 +23,7 @@ Events: `{id,job,agent,kind,text,time,folder}`. Kinds include `phase`, `note`, `
 
 The optional lead executes changes requested by the user. Optional reviewers inspect and offer opinions. Confirmed findings on implemented changes trigger one bounded correction pass, followed by read-only rechecks. Participants compare findings in a conference. The final report distinguishes actual changes from recommendations and attributes opinions. Standard/coder-only/all-agent permissions preserve the v2 policy. With all-agent bypass the review-only role is a prompt instruction, not enforced filesystem isolation.
 
-`limits[agent]` contains sanitized `{status,windows,source,updated_at,message}`. Windows contain `{label,used,reset}` where `used` is a percentage from 0–100 and `reset` is epoch seconds or null. Status distinguishes `ok`, `loading`, `signed_out`, `unavailable`, `error`, and `unlimited`. Missing data is not zero usage. Project token totals in `usage` are independent of account limits. Account probes reuse local sign-ins without returning credentials. Global limit events have an empty job ID and apply across project selections.
+`limits[agent]` contains sanitized `{status,windows,source,updated_at,message}` with optional `auth_source` and `refreshing`. Windows contain `{label,used,reset}` where `used` is a percentage from 0–100 and `reset` is epoch seconds or null. Status distinguishes `ok`, `loading`, `signed_out`, `unavailable`, `error`, `stale` and `unlimited`. Failed refreshes preserve prior valid windows as `stale`, retaining their successful `updated_at` and recording an `attempted_at`. Partial CLI events merge windows instead of removing other known periods. Missing data is not zero usage. Project token totals in `usage` are independent of account limits. Account probes reuse local sign-ins without returning credentials. Global limit events have an empty job ID and apply across project selections. File previews canonicalize paths against the selected project and reference roots; binary files are rejected and rendering is capped at 512 KiB / 3,000 lines.
 
 The local Vite development server exposes a same-origin-only `GET /__council/runtime` bridge on 127.0.0.1:1420. It starts or connects to the same Rust engine, never a mock backend. Runtime descriptors include a compatibility revision; an incompatible engine is replaced only when no work is running.
 

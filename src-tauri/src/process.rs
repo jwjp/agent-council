@@ -214,6 +214,15 @@ impl Parsed {
             return None;
         };
         let kind = e["type"].as_str().or(e["event"].as_str()).unwrap_or("");
+        if kind == "error" {
+            self.failed = true;
+            self.error = e["error"]["message"]
+                .as_str()
+                .or(e["message"].as_str())
+                .or(e["error"].as_str())
+                .unwrap_or("The CLI reported an error.")
+                .into();
+        }
         let item = &e["item"];
         let mut usage = Value::Null;
         let mut tool = None;
@@ -290,7 +299,11 @@ impl Parsed {
                     self.answer = e["result"]["response"].as_str().unwrap_or("").into();
                     self.failed = e["result"]["status"] != "SUCCESS";
                     usage = e["result"]["usage"].clone();
-                    self.error = e["result"]["error"].as_str().unwrap_or("").into();
+                    self.error = e["result"]["error"]["message"]
+                        .as_str()
+                        .or(e["result"]["error"].as_str())
+                        .unwrap_or("")
+                        .into();
                 }
             }
             "grok" => {
@@ -331,16 +344,10 @@ impl Parsed {
             self.has_usage = true;
         }
         // Prevent malformed or exceptionally verbose provider output from exhausting memory.
-        if self.preview.len() > 16000 {
-            self.preview = self
-                .preview
-                .chars()
-                .rev()
-                .take(3000)
-                .collect::<String>()
-                .chars()
-                .rev()
-                .collect();
+        // Keep the beginning: tail slicing breaks sentences and Markdown links.
+        // The final answer is retained separately from this bounded preview.
+        if self.preview.len() > 512000 {
+            self.preview = self.preview.chars().take(128000).collect();
         }
         tool
     }
@@ -400,7 +407,7 @@ where
                 anyhow::ensure!(line.len()<4_000_000,"CLI output line exceeded limit");
                 if let Some(tool)=parsed.line(name,&line){emit("tool",&tool,Value::Null);}
                 if let Some(limits)=parsed.limits.take(){emit("limits","",limits);}
-                if last.elapsed()>=Duration::from_secs(3)&&parsed.preview!=last_note&&!parsed.preview.is_empty(){last_note=parsed.preview.clone();let note=parsed.preview.chars().rev().take(420).collect::<String>().chars().rev().collect::<String>();emit("note",&note,Value::Null);last=Instant::now();}
+                if last.elapsed()>=Duration::from_secs(3)&&parsed.preview!=last_note&&!parsed.preview.is_empty(){last_note=parsed.preview.clone();emit_note(&parsed.preview,&mut emit);last=Instant::now();}
             },None=>output_open=false},
             line=stderr.next_line(),if error_open=>match line?{Some(line)=>{parsed.error.push_str(&line);parsed.error.push('\n');if parsed.error.len()>8000{parsed.error=parsed.error.chars().rev().take(4000).collect::<String>().chars().rev().collect();}},None=>error_open=false}
         }}
@@ -411,6 +418,13 @@ where
         let _ = child.kill().await;
     }
     result?;
+    if name == "agy"
+        && !parsed.failed
+        && parsed.answer.trim().is_empty()
+        && !parsed.preview.trim().is_empty()
+    {
+        parsed.answer = parsed.preview.clone();
+    }
     anyhow::ensure!(
         !parsed.failed,
         "{}",
@@ -425,6 +439,9 @@ where
         "CLI returned no answer. {}",
         parsed.error
     );
+    if !parsed.answer.is_empty() {
+        emit_note(&parsed.answer, &mut emit);
+    }
     if parsed.has_usage {
         emit(
             "usage",
@@ -433,6 +450,15 @@ where
         );
     }
     Ok(parsed)
+}
+
+fn emit_note<F: FnMut(&str, &str, Value)>(text: &str, emit: &mut F) {
+    let note = text.chars().take(64000).collect::<String>();
+    emit(
+        "note",
+        &note,
+        json!({"truncated":text.chars().count()>64000}),
+    );
 }
 
 #[cfg(windows)]
@@ -478,6 +504,27 @@ unsafe impl Send for JobGuard {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn notes_keep_complete_sentences_and_markdown_links() {
+        let text = format!(
+            "[main.rs](main.rs:8)\n{}\nEnd of the note.",
+            "Readable sentence. ".repeat(100)
+        );
+        let mut saved = String::new();
+        let mut data = Value::Null;
+        emit_note(&text, &mut |_, note, meta| {
+            saved = note.into();
+            data = meta;
+        });
+        assert_eq!(saved, text);
+        assert_eq!(data["truncated"], false);
+        emit_note(&"한".repeat(65000), &mut |_, note, meta| {
+            saved = note.into();
+            data = meta;
+        });
+        assert_eq!(saved.chars().count(), 64000);
+        assert_eq!(data["truncated"], true);
+    }
     #[test]
     fn permissions_are_explicit_and_prompts_remain_arguments() {
         for name in crate::model::AGENTS {

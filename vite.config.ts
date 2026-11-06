@@ -36,10 +36,17 @@ export default defineConfig({
               JSON.parse(
                 await readFile(path.join(root, "runtime.json"), "utf8"),
               );
+            const expectedVersion = JSON.parse(
+              await readFile(path.resolve("package.json"), "utf8"),
+            ).version;
             const healthy = async () => {
               try {
                 const r = await read();
-                if (new URL(r.url).hostname !== "127.0.0.1" || r.revision !== 2)
+                if (
+                  new URL(r.url).hostname !== "127.0.0.1" ||
+                  r.revision !== 2 ||
+                  r.version !== expectedVersion
+                )
                   return null;
                 const result = await fetch(r.url + "/v1/health", {
                   headers: { Authorization: "Bearer " + r.token },

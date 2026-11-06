@@ -16,6 +16,7 @@ const root = mkdtempSync(join(tmpdir(), "council-ui-test-")),
   project = join(root, "project"),
   bin = join(root, "bin");
 mkdirSync(project);
+writeFileSync(join(project, "main.rs"), "fn main() {}\n// 한글 파일 내용\n");
 mkdirSync(bin);
 let web, browser, runtime;
 const errors = [];
@@ -242,6 +243,45 @@ try {
   await page.mouse.move(rect.x + 70, rect.y + 20);
   await page.mouse.up();
   pass("Split resize and per-agent activity switch work");
+  await page
+    .locator(".agent-pane")
+    .first()
+    .getByRole("button", { name: /Read full note/ })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Working notes" }),
+  ).toBeVisible();
+  await expect(page.locator(".note-full h2")).toHaveText("Fixture result");
+  await page.screenshot({ path: ".runtime-test/ui-note.png" });
+  await page
+    .locator(".note-full")
+    .getByRole("link", { name: "main.rs" })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "File preview" }),
+  ).toBeVisible();
+  await expect(page.locator(".highlighted-line")).toContainText(
+    "한글 파일 내용",
+  );
+  assert.equal(
+    await page
+      .locator(".file-drawer h2")
+      .evaluate((el) => getComputedStyle(el).color),
+    await page
+      .locator(".file-source code")
+      .first()
+      .evaluate((el) => getComputedStyle(el).color),
+    "Dark file title must keep readable contrast",
+  );
+  await page.screenshot({ path: ".runtime-test/ui-file.png" });
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("dialog", { name: "Working notes" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  pass(
+    "Full notes render Markdown and local links open the correct file and line",
+  );
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(page.locator(".conversation")).toBeVisible();
   await page.getByRole("button", { name: "Split view", exact: true }).click();
@@ -254,6 +294,7 @@ try {
       status: "ok",
       windows: [
         { label: "5 hours", used: 44, reset: Date.now() / 1000 + 3600 },
+        { label: "Weekly", used: 79, reset: Date.now() / 1000 + 86400 },
       ],
       source: "Test fixture",
     };
@@ -269,7 +310,7 @@ try {
   await page.reload();
   await expect(
     page.locator(".quota-strip").getByRole("button", { name: /Claude Code/ }),
-  ).toContainText("44%");
+  ).toContainText("79%");
   await page
     .locator(".quota-strip")
     .getByRole("button", { name: /Claude Code/ })
@@ -281,6 +322,7 @@ try {
       .locator(".usage-detail"),
   ).toBeVisible();
   await expect(page.locator(".usage-detail")).toContainText("44% used");
+  await expect(page.locator(".usage-detail")).toContainText("79% used");
   pass(
     "Account quota and direct agent drill-down are distinct from project tokens",
   );

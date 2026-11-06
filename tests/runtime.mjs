@@ -72,6 +72,20 @@ try {
   const initial = await request("/state");
   assert.ok(initial.agents.every((a) => a.installed));
   assert.equal(initial.messages.length, 0);
+  writeFileSync(join(project, "main.rs"), "first line\n// 한글 파일 내용\n");
+  writeFileSync(join(root, "outside.txt"), "outside selected folders");
+  const preview = await request("/files/read", { target: "main.rs:2" });
+  assert.equal(preview.line, 2);
+  assert.ok(preview.text.includes("한글 파일 내용"));
+  const escapedFile = await fetch(runtime.url + "/v1/files/read", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + runtime.token,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ target: "../outside.txt" }),
+  });
+  assert.equal(escapedFile.status, 400);
   const invalid = await fetch(runtime.url + "/v1/settings", {
     method: "PUT",
     headers: {

@@ -280,6 +280,96 @@
         }
       }
     },
+    "/files/read": {
+      "post": {
+        "operationId": "previewProjectFile",
+        "description": "Read-only text preview inside the selected project or reference folders. Supports file:/// paths and :line / #Lline suffixes. Canonical path checks reject traversal and symlinks outside configured folders. Binary files are rejected. Large previews explicitly report truncation at 512 KiB / 3000 lines; start_line preserves correct numbering for excerpts.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resolved path, filename, UTF-8 text, optional highlighted line and truncated flag",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "line": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    },
+                    "start_line": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/jobs": {
       "post": {
         "operationId": "startJob",

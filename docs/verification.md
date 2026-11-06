@@ -1,13 +1,13 @@
 # v3 migration verification
 
-Verified locally on Windows, 2026-11-05.
+Updated for v3.1.0 locally on Windows, 2026-11-06.
 
-- Frontend: TypeScript build and 4 Vitest assertions covering event frame retention and quota interpretation.
-- Rust: 10 unit tests covering provider output parsing, quota normalization, permission arguments, concurrent usage aggregation, interrupted work, durable event IDs, legacy settings/chat/draft import and import idempotency.
+- Frontend: TypeScript build and 6 Vitest assertions covering event frame retention, labeled quota summaries, fractional percentages and safe file/web link classification.
+- Rust: 16 unit tests covering provider output parsing, complete bounded notes, quota normalization, Codex duration drift/order, partial Claude limit merging, stale refreshes, disabled Antigravity quotas, safe file resolution, large file line windows, binary rejection, permission arguments, concurrent usage aggregation, interrupted work, durable event IDs and legacy import.
 - Live HTTP integration with deterministic native Rust CLI fixtures: authentication, validation, idempotent job submission, all six adapters, coder/review/conference/report flow, token totals, unavailable usage, replay, conflicting jobs, update admission gate, descendant cancellation, restart persistence.
-- An installed, signed-in **Codex** CLI completed a minimal no-tools request through the Rust runtime and returned `ENGINE_OK`; reported usage was saved. Other providers were covered by fixtures, not live model requests.
+- An installed, signed-in **Codex** CLI completed a minimal no-tools request through the Rust runtime in the v3 migration and returned `ENGINE_OK`. In this revision **Antigravity** completed a minimal no-tools print request returning `AGY_FORMAT_OK`, confirming its current streamed event shape. Other provider coding flows use deterministic fixtures; these small probes do not establish full live multi-agent review behavior.
 - Read-only account usage probes returned real provider data for **Codex, Claude Code, Antigravity, Grok and Cursor** using existing local sign-ins. Gemini has no local OAuth sign-in on this PC and reports that state explicitly. Provider usage checks do not establish live coding behavior for all agents.
-- 17 headless Microsoft Edge checks use the actual Rust runtime and isolated CLI fixtures. They cover source HTML launch guidance, browser bootstrap, distinct lead/permissions/team/settings/project actions, delayed settings responses, IME Enter, Shift+Enter, draft persistence, the correction/recheck workflow, split controls, account quota details, Markdown table scrolling, small viewport settings and browser exceptions.
+- 18 headless Microsoft Edge checks use the actual Rust runtime and isolated CLI fixtures. They cover source HTML launch guidance, browser bootstrap, distinct lead/permissions/team/settings/project actions, delayed settings responses, IME Enter, Shift+Enter, draft persistence, correction/recheck workflow, split controls, full Markdown notes, actual file previews and line highlighting, Escape closing only the file preview, labeled account periods, Markdown table scrolling, compact settings and browser exceptions.
 - Native Tauri/WebView2 UI: custom title bar, main chat, split results, settings, Korean language, dark appearance and Korean text entry inspected. These checks do not establish all possible IME/monitor configurations.
 
 The installed Postman CLI did not support the skill's `status` command. API checks ran locally through the versioned HTTP contract using Node's built-in HTTP client; no Postman workspace was created or published.

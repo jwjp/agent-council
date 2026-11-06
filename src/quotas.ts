@@ -3,6 +3,30 @@ export interface WindowUsage {
   used: number;
   reset: number | null;
 }
+export function summaryWindow(ws: WindowUsage[]) {
+  return ws.reduce<WindowUsage | undefined>(
+    (best, w) => (!best || w.used > best.used ? w : best),
+    undefined,
+  );
+}
+export function percent(used: number) {
+  if (used > 0 && used < 0.1) return "<0.1%";
+  if (used < 100 && used > 99.9) return ">99.9%";
+  return `${Number(used.toFixed(1))}%`;
+}
+export function quotaLabel(label: string) {
+  return label === "5 hours"
+    ? "5h"
+    : label === "Weekly"
+      ? "wk"
+      : label === "Monthly" || label === "Plan"
+        ? "mo"
+        : label.includes("Gemini")
+          ? "Gemini"
+          : label.includes("Claude")
+            ? "Claude/GPT"
+            : label;
+}
 type V = Record<string, any>;
 export function windows(agent: string, data: unknown): WindowUsage[] {
   const value = data as V;

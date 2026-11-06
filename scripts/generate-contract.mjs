@@ -56,6 +56,34 @@ const paths = {
       responses,
     },
   },
+  "/files/read": {
+    post: {
+      operationId: "previewProjectFile",
+      description:
+        "Read-only text preview inside the selected project or reference folders. Supports file:/// paths and :line / #Lline suffixes. Canonical path checks reject traversal and symlinks outside configured folders. Binary files are rejected. Large previews explicitly report truncation at 512 KiB / 3000 lines; start_line preserves correct numbering for excerpts.",
+      requestBody: body({
+        ...object({ target: string }),
+        required: ["target"],
+      }),
+      responses: {
+        ...responses,
+        200: {
+          description:
+            "Resolved path, filename, UTF-8 text, optional highlighted line and truncated flag",
+          content: json(
+            object({
+              path: string,
+              name: string,
+              text: string,
+              line: { type: ["integer", "null"] },
+              truncated: { type: "boolean" },
+              start_line: { type: "integer", minimum: 1 },
+            }),
+          ),
+        },
+      },
+    },
+  },
   "/jobs": {
     post: {
       operationId: "startJob",

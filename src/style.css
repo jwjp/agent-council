@@ -1801,3 +1801,403 @@ h3 {
     transition: none !important;
   }
 }
+
+/* Reading surfaces use one scale for Latin and Korean text. */
+.pane-header {
+  padding-top: 13px;
+  padding-bottom: 10px;
+}
+.pane-header select {
+  font-size: 12px;
+  font-weight: 600;
+}
+.pane-phase {
+  font-size: 11px;
+  min-height: 32px;
+}
+.current-request {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-left: 3px solid var(--accent);
+}
+.work-note {
+  padding: 11px 15px 13px;
+  max-height: 118px;
+  background: var(--soft);
+  border-top: 1px solid var(--line);
+}
+.work-note > button {
+  font-size: 11px;
+  line-height: 1.5;
+  text-transform: none;
+  color: var(--sub);
+  gap: 12px;
+  margin-bottom: 7px;
+}
+.work-note > button > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+}
+.work-note time {
+  font-size: 10px;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.work-note .note-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--accent);
+  font-weight: 500;
+}
+.note-excerpt {
+  max-height: 49px;
+  overflow: hidden;
+  mask-image: linear-gradient(#000 65%, transparent);
+}
+.note-excerpt .markdown {
+  font-size: 12px;
+  line-height: 1.75;
+}
+.note-excerpt .markdown :is(h1, h2, h3) {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0 0 3px;
+}
+.note-excerpt .markdown p {
+  margin: 0 0 5px;
+}
+.note-full {
+  padding: 24px 28px;
+  min-height: 0;
+}
+.note-full .markdown {
+  font-size: 13px;
+}
+.preview-limit {
+  margin-top: 20px;
+  padding: 12px;
+  background: var(--soft);
+  color: var(--sub);
+  font-size: 11px;
+}
+.quota-period {
+  color: var(--muted);
+  font-size: 9px;
+  margin-left: 1px;
+}
+.quota-is-stale {
+  opacity: 0.65;
+  color: #b37a29;
+}
+.agent-problem {border:1px solid color-mix(in srgb,var(--danger) 25%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--danger) 4%,var(--surface));padding:17px 18px;color:var(--ink);}
+.agent-problem>div {display:flex;align-items:center;gap:8px;color:var(--danger);font-size:12px;}
+.agent-problem p {font-size:12px;line-height:1.85;margin-top:10px;overflow-wrap:anywhere;}
+.agent-problem-detail {color:var(--sub);white-space:pre-wrap;font-size:11px!important;}
+.statusbar .quota-strip button {
+  gap: 5px;
+}
+.usage-popover {
+  width: 400px;
+  padding: 0;
+  bottom: 37px;
+  border-radius: 15px;
+  box-shadow:
+    0 15px 65px #11182726,
+    0 1px 5px #1118270c;
+}
+.usage-popover > header {
+  padding: 18px 18px 14px;
+  margin: 0;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.usage-popover > header strong {
+  font-size: 14px;
+  letter-spacing: -0.2px;
+}
+.usage-popover > header p {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.usage-scroll {
+  padding: 0 8px;
+}
+.usage-agent {
+  padding: 9px 8px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+}
+.usage-agent:last-child {
+  border-bottom: 0;
+}
+.usage-agent.is-expanded {
+  background: var(--soft);
+  border-radius: 9px;
+  margin: 4px 0;
+  border-bottom-color: transparent;
+}
+.usage-agent > .usage-agent-heading {
+  padding: 3px 0 9px;
+  gap: 8px;
+}
+.usage-agent strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.usage-agent .quota-empty {
+  font-size: 11px;
+  color: var(--muted);
+}
+.usage-agent .quota-stale,
+.usage-warning {
+  color: #b37a29;
+  font-size: 10px;
+}
+.usage-summary,
+.usage-detail {
+  padding: 0 0 0 29px;
+}
+.usage-window {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 55px 67px;
+  align-items: center;
+  gap: 4px 9px;
+  margin: 4px 0 9px;
+  font-size: 11px;
+}
+.usage-window-name {
+  grid-column: 1;
+  font-size: 11px;
+  color: var(--sub);
+  line-height: 1.5;
+}
+.window-meter {
+  grid-column: 2;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--line);
+}
+.window-meter i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+}
+.window-meter i.high {
+  background: var(--danger);
+}
+.usage-window strong {
+  font-size: 11px;
+  grid-column: 3;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.usage-window strong span {
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.usage-window > small {
+  grid-column: 1/-1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  font-size: 10px;
+  color: var(--muted);
+}
+.usage-window .window-left {
+  grid-column: 1/-1;
+  font-size: 10px;
+  color: var(--sub);
+  margin: 0;
+}
+.usage-detail .usage-help,
+.usage-detail .usage-warning {
+  font-size: 11px;
+  line-height: 1.75;
+  margin: 8px 0;
+}
+.usage-detail .usage-source {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  padding-top: 9px;
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.usage-detail .token-totals {
+  font-size: 10px;
+  align-items: center;
+  gap: 12px;
+}
+.usage-detail .token-totals strong {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.usage-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+.usage-actions button {
+  font-size: 10px;
+  border: 1px solid var(--line);
+  padding: 5px 7px;
+  background: var(--surface);
+}
+.usage-popover > footer {
+  padding: 12px 18px;
+  font-size: 10px;
+  margin: 0;
+  color: var(--muted);
+}
+.file-backdrop {
+  position: fixed;
+  inset: 43px 0 0;
+  z-index: 80;
+  background: #10182742;
+  backdrop-filter: blur(3px);
+  display: flex;
+  justify-content: flex-end;
+}
+.file-drawer {
+  width: min(900px, 88vw);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: -20px 0 65px #11182726;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  outline: none;
+  border-left: 1px solid var(--line);
+}
+.file-drawer > header {
+  display: flex;
+  align-items: center;
+  padding: 20px 22px;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.file-heading-icon {
+  display: flex;
+  padding: 9px;
+  background: var(--selected);
+  border-radius: 10px;
+  color: var(--accent);
+}
+.file-drawer > header > div {
+  flex: 1;
+  min-width: 0;
+}
+.file-drawer h2 {
+  font-size: 15px;
+  letter-spacing: -0.3px;
+}
+.file-drawer header p {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 3px;
+}
+.file-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 23px;
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--soft);
+  border-bottom: 1px solid var(--line);
+}
+.file-caption span {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.file-source {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 0;
+  tab-size: 4;
+}
+.file-source > div {
+  display: flex;
+  min-width: max-content;
+  padding: 0 22px 0 0;
+  line-height: 1.85;
+}
+.file-source code {
+  font:
+    12px/1.85 "Cascadia Code",
+    Consolas,
+    "Malgun Gothic",
+    monospace;
+  white-space: pre;
+  color: var(--ink);
+}
+.line-number {
+  display: inline-block;
+  flex: 0 0 56px;
+  text-align: right;
+  padding-right: 16px;
+  user-select: none;
+  color: var(--muted);
+  font:
+    11px/2.02 Consolas,
+    monospace;
+}
+.file-source .highlighted-line {
+  background: var(--selected);
+  box-shadow: inset 3px 0 var(--accent);
+}
+.file-drawer > footer {
+  padding: 12px 22px;
+  font-size: 10px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+}
+.file-error,
+.file-loading {
+  flex: 1;
+  padding: 45px 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+.file-error h3 {
+  color: var(--ink);
+  font-size: 14px;
+}
+.file-error p {
+  font-size: 12px;
+  max-width: 380px;
+}
+@media (max-width: 760px) {
+  .file-drawer {
+    width: 100vw;
+  }
+  .usage-window {
+    grid-template-columns: minmax(0, 1fr) 45px 67px;
+  }
+  .note-full {
+    padding: 18px;
+  }
+}

@@ -79,6 +79,7 @@ pub fn router(s: Server) -> Router {
         .route("/v1/state", get(snapshot))
         .route("/v1/settings", axum::routing::put(settings))
         .route("/v1/draft", axum::routing::put(draft))
+        .route("/v1/files/read", axum::routing::post(read_file))
         .route("/v1/jobs", axum::routing::post(start))
         .route("/v1/jobs/{id}/cancel", axum::routing::post(cancel))
         .route("/v1/events", get(events))
@@ -130,6 +131,19 @@ async fn draft(State(s): State<Server>, Json(draft): Json<Draft>) -> ApiResult {
         &json!(draft.text),
     )?;
     Ok(Json(json!({"ok":true})))
+}
+#[derive(Deserialize)]
+struct FileLink {
+    target: String,
+}
+async fn read_file(State(s): State<Server>, Json(link): Json<FileLink>) -> ApiResult {
+    let settings = s.engine.settings.lock().unwrap().clone();
+    let preview = tokio::task::spawn_blocking(move || {
+        crate::files::read(&settings.folder, &settings.references, &link.target)
+    })
+    .await
+    .map_err(anyhow::Error::from)??;
+    Ok(Json(json!(preview)))
 }
 #[derive(Deserialize)]
 struct Start {
