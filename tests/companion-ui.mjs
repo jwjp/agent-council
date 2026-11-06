@@ -43,6 +43,22 @@ const env = {
 const suffix = process.platform === "win32" ? ".exe" : "";
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const errors = [];
+// WebKit screenshots inject an inline `body {}` animation-sync stylesheet.
+// Keep the host's strict CSP intact; inspect screenshots with Edge instead.
+const screenshot = (target, path) =>
+  process.env.COUNCIL_UI_BROWSER === "webkit"
+    ? Promise.resolve()
+    : target.screenshot({ path });
+async function observeCsp(target) {
+  await target.exposeFunction("recordCspViolation", (directive, blocked) =>
+    errors.push(`CSP: ${directive} blocked ${blocked}`),
+  );
+  await target.addInitScript(() =>
+    document.addEventListener("securitypolicyviolation", (event) =>
+      window.recordCspViolation(event.effectiveDirective, event.blockedURI),
+    ),
+  );
+}
 let web, browser, runtime, page, phone;
 let checks = 0;
 const pass = (name) => {
@@ -156,7 +172,7 @@ try {
     "src",
     /^data:image\/png/,
   );
-  await page.screenshot({ path: ".runtime-test/desktop-phone-settings.png" });
+  await screenshot(page, ".runtime-test/desktop-phone-settings.png");
   pass(
     "Desktop creates a scoped pairing QR through a distinct connection panel",
   );
@@ -167,13 +183,7 @@ try {
   });
   phone = await context.newPage();
   phone.on("pageerror", (e) => errors.push(e.message));
-  phone.on("console", (m) => {
-    if (
-      m.type() === "error" &&
-      /Content Security Policy|Refused to/.test(m.text())
-    )
-      errors.push(m.text());
-  });
+  await observeCsp(phone);
   await phone.goto(invite.url);
   const manifestResponse = await context.request.get(
     origin + "/companion/manifest.webmanifest",
@@ -204,7 +214,7 @@ try {
   await expect(
     phone.getByRole("dialog", { name: "Install companion" }),
   ).toBeVisible();
-  await phone.screenshot({ path: ".runtime-test/mobile-install-guide.png" });
+  await screenshot(phone, ".runtime-test/mobile-install-guide.png");
   await phone
     .getByRole("button", { name: "Close install guide", exact: true })
     .click();
@@ -229,7 +239,7 @@ try {
   await expect(page.getByText("Pocket review", { exact: true })).toBeVisible({
     timeout: 8000,
   });
-  await phone.screenshot({ path: ".runtime-test/mobile-pairing.png" });
+  await screenshot(phone, ".runtime-test/mobile-pairing.png");
   await page.getByRole("button", { name: "Approve", exact: true }).click();
   await expect(phone.getByText("Connected", { exact: true })).toBeVisible({
     timeout: 12000,
@@ -239,6 +249,9 @@ try {
     cookies.some(
       (c) =>
         c.name === "CouncilDevice" && c.httpOnly && c.sameSite === "Strict",
+    ),
+    JSON.stringify(
+      cookies.map(({ name, httpOnly, sameSite }) => ({ name, httpOnly, sameSite })),
     ),
   );
   assert.ok(
@@ -363,7 +376,7 @@ try {
     readFileSync(join(project, "fixture-implementation.txt"), "utf8"),
     "corrected",
   );
-  await phone.screenshot({ path: ".runtime-test/mobile-dashboard.png" });
+  await screenshot(phone, ".runtime-test/mobile-dashboard.png");
   pass(
     "Mobile submits real host work and displays the attributed Markdown council report",
   );
@@ -529,6 +542,7 @@ try {
   );
   const home = await homeContext.newPage();
   home.on("pageerror", (e) => errors.push(e.message));
+  await observeCsp(home);
   await home.goto(origin + "/companion/");
   await expect(home.getByLabel("Pairing link", { exact: true })).toBeVisible();
   await expect(
@@ -549,7 +563,7 @@ try {
   await expect(home.getByText("Connected", { exact: true })).toBeVisible({
     timeout: 10000,
   });
-  await home.screenshot({ path: ".runtime-test/mobile-home-screen.png" });
+  await screenshot(home, ".runtime-test/mobile-home-screen.png");
   await home
     .getByRole("button", { name: "Disconnect this device", exact: true })
     .click();
