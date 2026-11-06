@@ -19,33 +19,22 @@ const found = run("find", [
   .filter((p) => p.endsWith(".app") && !p.includes(".xcarchive/"));
 if (!found.length) throw Error("No simulator app was produced");
 const app = found[0];
-// Local ad-hoc identity for this simulator only, never an Apple distribution signature.
+// Let Xcode produce simulator signatures and embedded simulated entitlements.
 const platform = run("/usr/libexec/PlistBuddy", [
   "-c",
   "Print :DTPlatformName",
   app + "/Info.plist",
 ]);
-if (platform !== "iphonesimulator")
-  throw Error("Refusing simulator signing for a non-simulator bundle");
-writeFileSync(
-  ".runtime-test/ios-simulator.entitlements",
-  `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>application-identifier</key><string>dev.agentcouncil.companion</string>
-<key>keychain-access-groups</key><array><string>dev.agentcouncil.companion</string></array>
-<key>get-task-allow</key><true/>
-</dict></plist>`,
-);
-run("codesign", [
-  "--force",
-  "--sign",
-  "-",
-  "--entitlements",
-  ".runtime-test/ios-simulator.entitlements",
-  app,
+if (platform !== "iphonesimulator") throw Error("Expected a simulator bundle");
+const executable = run("/usr/libexec/PlistBuddy", [
+  "-c",
+  "Print :CFBundleExecutable",
+  app + "/Info.plist",
 ]);
-run("codesign", ["--verify", "--strict", app]);
+const commands = run("otool", ["-l", app + "/" + executable]);
+writeFileSync(".runtime-test/ios-macho.txt", commands);
+if (!/sectname\s+__entitlements/.test(commands))
+  throw Error("Simulator Keychain entitlements were not embedded");
 const devices = JSON.parse(
   run("xcrun", ["simctl", "list", "devices", "available", "-j"]),
 ).devices;

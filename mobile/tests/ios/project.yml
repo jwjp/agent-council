@@ -11,7 +11,6 @@ targets:
       properties:
         application-identifier: dev.agentcouncil.tests.vault
         keychain-access-groups: [dev.agentcouncil.tests.vault]
-        get-task-allow: true
     sources: [Host.swift]
     settings:
       base:

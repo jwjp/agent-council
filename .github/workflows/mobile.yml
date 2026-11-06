@@ -45,15 +45,15 @@ jobs:
         run: |
           command -v xcodegen || brew install xcodegen
           npm run tauri -- ios init --ci
+      - name: Exercise iOS Keychain using an isolated simulator test host
+        run: node scripts/ios-vault-tests.mjs
       - name: Build without distribution credentials
         working-directory: mobile
         run: |
           if [ "$(uname -m)" = arm64 ]; then TARGET=aarch64-sim; else TARGET=x86_64; fi
-          npm run tauri -- ios build --debug --target "$TARGET" --no-sign --ci
+          npm run tauri -- ios build --debug --target "$TARGET" --ci
       - name: Launch packaged UI in iPhone simulator
         run: node scripts/ios-smoke.mjs
-      - name: Exercise iOS Keychain using an isolated simulator test host
-        run: node scripts/ios-vault-tests.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
