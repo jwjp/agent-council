@@ -1,8 +1,10 @@
 # v3 migration verification
 
-## Review/conference flow — beta.2 candidate
+## Review/conference flow — beta.2
 
 The source now publishes parallel results as they finish, retains stable evidence order and round barriers, excludes failed peers from downstream retries and returns explicit lead questions for user input. Desktop and phone share a real workflow/member-count rail and compact milestone/note snapshots; readers can keep an earlier scroll position when new results arrive. Native gated fixtures prove a fast review is saved while another reviewer is still blocked, discussion starts after the review barrier, failed peers are not repeatedly retried and questions skip extra rounds. Source is 3.2.0-beta.2; final CI/release evidence is recorded in [PROJECT_STATUS.md](PROJECT_STATUS.md). No paid provider sweep or additional physical-phone test is implied.
+
+[Windows/macOS CI passed](https://github.com/jwjp/agent-council/actions/runs/42185469980) for source/tag `07b250a`: 27 Rust tests, 11 frontend tests/build, both runtime launchers and companion API integration; 21 desktop and 11 phone-sized Edge checks on Windows. The actual optimized EXE passed runtime and companion integration and the local Postman collection (4 requests / 5 assertions). The [unsigned Windows beta.2](https://github.com/jwjp/agent-council/releases/tag/v3.2.0-beta.2) is published with verified remote hashes; stable/beta.1 assets are unchanged. No native mobile/physical Safari or real Mac GUI/provider validation is implied.
 
 ## Cursor command collision source fix after beta.1
 

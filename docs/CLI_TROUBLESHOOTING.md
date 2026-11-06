@@ -22,7 +22,7 @@ Cursor IDE account usage is separate from Cursor CLI authentication. A successfu
 
 The resolver now prefers the dedicated `cursor-agent` alias for the internal Cursor ID `agent`. Windows wrappers still resolve to their installed Node runtime/index. If only a generic native `agent` exists, a bounded, cached `--help` probe requires Cursor-specific identification before any project prompt is sent; an unrelated command reports a resolution error. No model call or provider login is used for discovery. Cache entries are invalidated when executable size/mtime changes.
 
-The desktop's error guidance and login-copy button use `cursor-agent.cmd` on Windows and `cursor-agent` elsewhere. Runtime fixtures provide their own dedicated alias, including a regression where the generic `agent` belongs to a fake Grok and must never receive the Cursor request. This is a source/debug fix; published beta.1 assets are unchanged.
+The desktop's error guidance and login-copy button use `cursor-agent.cmd` on Windows and `cursor-agent` elsewhere. Runtime fixtures provide their own dedicated alias, including a regression where the generic `agent` belongs to a fake Grok and must never receive the Cursor request. These fixes ship in [beta.2](https://github.com/jwjp/agent-council/releases/tag/v3.2.0-beta.2); published beta.1 assets are unchanged.
 
 ## Workspace trust after login
 

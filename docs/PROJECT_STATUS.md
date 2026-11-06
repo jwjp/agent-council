@@ -4,7 +4,7 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 
 ## Current product
 
-- Latest stable application: [v3.1.0](https://github.com/jwjp/agent-council/releases/tag/v3.1.0), Windows x64 portable EXE/ZIP, **unsigned**. Latest preview: [v3.2.0-beta.1](https://github.com/jwjp/agent-council/releases/tag/v3.2.0-beta.1), a separate unsigned Windows EXE/ZIP. Stable release assets and the stable update channel are unchanged.
+- Latest stable application: [v3.1.0](https://github.com/jwjp/agent-council/releases/tag/v3.1.0), Windows x64 portable EXE/ZIP, **unsigned**. Latest preview: [v3.2.0-beta.2](https://github.com/jwjp/agent-council/releases/tag/v3.2.0-beta.2), a separate unsigned Windows EXE/ZIP. Stable and beta.1 assets are unchanged; the stable updater does not select prereleases.
 - Stack: Tauri 2, React/TypeScript, Rust engine; no shipped Python or Node.js runtime. Current CLI adapters: Codex, Claude Code, Antigravity, Grok, Cursor Agent, Gemini CLI.
 - Optional lead and optional reviewers; bounded correction/recheck workflow, attributed discussion/report, durable chat/drafts/jobs, cancel, Markdown, split view, complete bounded working notes and read-only file previews.
 - Account usage is separate from project tokens. Quota periods/model groups, resets, sources and explicitly stale readings are retained. Cursor IDE quota and Agent CLI authentication are independent.
@@ -13,6 +13,8 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 - Preview **3.2.0-beta.1** adds a separate opt-in companion browser gateway, QR challenge/host approval, scoped revocable cookies, private device drafts, project-bound work/results/usage/files and reconnectable progress. Administrator HTTP/SSE remains loopback-only; runtime revision is **4**. Native mobile builds and remote push are not implemented. See [MOBILE_COMPANION.md](MOBILE_COMPANION.md).
 
 ## Verification evidence
+
+- Beta.2 source/tag `07b250a904ee5a728f924b9c3fb23b9a34f17b2f`: [Windows/macOS CI passed](https://github.com/jwjp/agent-council/actions/runs/42185469980). 27 Rust tests, 11 frontend tests/build, both launchers and companion API integration; 21 desktop and 11 companion browser checks on Windows. The actual optimized Windows EXE passed runtime/companion integration, including gated fast/slow review and failure/clarification regressions, plus the local Postman collection (4 requests / 5 assertions). Browser screenshots were inspected. No new paid provider or physical-device sweep.
 
 - Preview application source `82d8c989565b43a5e647d5786b5034ddce9ae18e`: [Windows/macOS CI passed](https://github.com/jwjp/agent-council/actions/runs/42170870009), including 24 Rust tests, 8 frontend tests/build, both runtime launchers and companion API integration on both OSes; 18 desktop and 10 companion browser checks on Windows. The actual Windows release EXE passed runtime/companion integration and a local Postman collection (4 requests / 5 assertions).
 - After owner Serve activation, an isolated release-EXE test over actual Tailscale HTTPS port 8443 passed certificate validation, embedded UI/admin-route separation, pairing/approval, Secure/HttpOnly/Strict cookies, fixture execution, streamed report, reload and revocation in phone-sized Edge on this host. Temporary routes and test data/runtime were removed, leaving Serve configuration empty. A first port-18443 attempt timed out; physical phone/Safari and real Mac GUI/provider checks remain unverified.
@@ -36,13 +38,14 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 
 ## Recent tasks — keep the latest five
 
-### 2026-11-06 — Smoother review/conference workflow (beta.2 candidate)
+### 2026-11-06 — Smoother review/conference workflow, beta.2 published
 
 - Parallel review, recheck and discussion results are persisted/displayed on completion instead of waiting for the slowest participant. Later rounds retain their barrier, and aggregation/report selection keeps configured order. Failed participants are excluded from downstream retries. A lead clarification returns directly to the user.
 - Added a shared desktop/phone progress rail driven by durable `workflow` stage/member events and actual phase outcomes. Questions appear in the council pane/tab with an input-needed status. Reading older results preserves scroll position and offers an explicit new-results button.
 - Desktop/phone snapshots now return latest complete notes plus bounded milestone/tool/error activity, keeping original durable history through SSE replay. Compaction preserves workflow/phase milestones under noisy tools; snapshots merge newer streamed events. No user settings, paired grants or production jobs were changed during this task.
-- Prepared source version 3.2.0-beta.2, also carrying the previous Cursor collision/login-command fixes. Passed local frontend tests/build and new gated fast/slow-review, clarification, failed-peer and snapshot-retention regressions; final UI, Windows/macOS CI and release-EXE checks are being completed. Existing beta.1/stable assets are unchanged until a distinct beta.2 prerelease is published.
-- Next: complete verification, publish the separate Windows preview, then validate the updated flow with the owner's paired phone before native mobile packaging. No paid provider sweep or new signing claim.
+- Published [v3.2.0-beta.2](https://github.com/jwjp/agent-council/releases/tag/v3.2.0-beta.2) from `07b250a` as a separate unsigned Windows prerelease, including the previous Cursor collision/login-command fixes. All local/CI/release-EXE checks above passed; initial fixture assertion/selector setup issues were corrected and Windows temporary-file cleanup gained bounded retries. Postman's unsupported `status` command remains an explicit CLI limitation; its local collection ran successfully without credentials/cloud reporting.
+- Uploaded asset SHA-256 values match locally verified bytes: EXE `ef13383ec38a12275b14297eb4d96fa06125c20522451a6b20cf6b8a68656235`, ZIP `4453f254d5e7f6518f758831d21645ff84f7f9803e791a9bef2861e1b6b4bddf`. Tag target/prerelease state and unchanged stable `latest` were verified. Documentation-only follow-up does not rebuild these bytes.
+- Next: finish existing work, run the new ZIP's EXE and reload the paired phone to validate the updated real-provider flow before native mobile packaging. No paid provider sweep, native iOS/Android binary, new HTTPS route change or signing claim.
 
 ### 2026-11-06 — Cursor/Grok CLI collision diagnosis and source fix
 
