@@ -21,6 +21,8 @@ Snapshots contain the latest complete working note per agent and bounded phase/t
 
 Static `/companion/` and `/assets/*` contain only browser application assets. API responses are not cacheable. Mutations require the exact configured Origin; requests with a different supplied Origin are rejected, including reads. No permissive CORS is installed.
 
+Current source also serves the public `/companion/manifest.webmanifest` (`application/manifest+json`) and three PNGs: `/companion/app-icon-192.png`, `/companion/app-icon-512.png`, `/companion/apple-touch-icon.png`. These exact static routes contain no account/project data. CSP permits same-origin manifests and retains same-origin-only scripts/styles; there is no service worker. The manifest ID/start/scope are `/companion/`, without any pairing fragment. This adds no REST operation or authentication change.
+
 | Method/path under `/companion/v1` | Request / result |
 | --- | --- |
 | POST `/pair` | `{code,name}`; claim an unexpired unused invitation, receive an HttpOnly pending cookie; PC approval still required |

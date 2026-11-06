@@ -39,6 +39,7 @@ This is the canonical project instruction file. `CLAUDE.md` and `GEMINI.md` poin
 - `quota.rs`: provider usage probes and normalization; `files.rs`: bounded, read-only project/reference previews.
 - `server.rs`: authenticated loopback HTTP/SSE runtime; `store.rs`: SQLite persistence and migration; `updates.rs`: manual GitHub update checks and installation.
 - `companion.rs`: separate, opt-in loopback browser gateway; host-only management is under `/v1/companion`, paired cookies under `/companion/v1` on a different listener. `src/companion.tsx`, `companion-settings.tsx`, `companion.css` and `companion/index.html` implement the mobile web client and host panel. `markdown.tsx` is shared rendering.
+- `src/companion-draft.ts` owns revision/request-order guards and bounded, expiring, grant-scoped per-tab browser input recovery. Native mode does not use this browser backup; authentication material must never enter it. `public/companion` contains only fixed Home Screen metadata/icons, without invitations.
 - `docs/runtime-api.md`, `docs/openapi.json`: runtime contract. `scripts/generate-contract.mjs` generates the spec; edit the generator and regenerate the JSON together.
 - `vite.config.ts`: same-origin local browser bridge to the real engine. Source `index.html` opened with `file://` shows launch instructions, not the working app.
 

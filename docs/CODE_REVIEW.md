@@ -2,7 +2,7 @@
 
 Read-only review by Claude Code on 2026-11-06 against `cd3b6c7` (`feat/native-companion`). Nothing was built or executed for this review. Line numbers refer to that commit and can drift; re-read the source before acting.
 
-**Evidence labels.** *Verified* means the code path was read and confirmed directly. *Reported* means a delegated read-only pass found it and it was not independently re-checked; confirm before fixing. None of these items have a reproducing test yet.
+**Evidence labels.** *Verified* means the code path was read and confirmed directly. *Reported* means a delegated read-only pass found it and it was not independently re-checked; confirm before fixing. The remaining open observations have no reproducing test from this review. Subsequent companion regression evidence is noted under R9.
 
 ## How to use this file
 
@@ -23,7 +23,7 @@ Read-only review by Claude Code on 2026-11-06 against `cd3b6c7` (`feat/native-co
 | R6 | Blocking work on async paths during job start | `engine.rs` (~147-169), `process.rs` launcher probe (~168) | Job start loads all jobs synchronously and resolves the coder launcher; the generic `agent` probe can block up to 3 s with `thread::sleep`. The delegated pass reported this happens while the `active` mutex is held, and `state_for` resolves launchers for all six agents per request. Can stall tokio workers, cancel and state. | Partly verified (sync calls confirmed; lock scope reported) |
 | R7 | Prompts passed as argv for some adapters | `process.rs` (~234, ~259, ~282) | Antigravity, Grok and Cursor receive the prompt on the command line. Large requests plus history can exceed the Windows 32K command-line limit and fail to spawn. Possible: no `--` separator for prompts beginning with `-`. | Reported |
 | R8 | Usage probes are not tree-killed | `engine.rs` (~672-706) | `codex app-server` and `agy` probes are spawned without a Job Object/process group; `kill()` reaches only the direct child, so grandchildren may be left behind. | Reported |
-| R9 | `/state` responses can apply out of order | `src/App.tsx` `refresh` (~261-273); same pattern in `src/companion.tsx` | An older refresh that resolves after a folder change restores the previous `currentFolder`, misfiltering events and saving drafts under the wrong folder until the next refresh. | Reported (possible) |
+| R9 | Desktop `/state` responses can apply out of order | `src/App.tsx` `refresh` (~261-273) | An older refresh that resolves after a folder change restores the previous `currentFolder`, misfiltering events and saving drafts under the wrong folder until the next refresh. The companion part was addressed in `b23a3bf` with session/sequence/revision guards and a delayed-snapshot regression; this does not resolve the desktop observation. | Desktop: reported (possible); companion fix: fixture-tested |
 | R10 | Companion settings poll can overlap | `src/companion-settings.tsx` (~70) | `setInterval(refresh, 1500)` has no in-flight guard with 30 s timeouts, so requests stack when the host is slow. | Reported |
 | R11 | Windows runtime replacement race | `server.rs` (~313) | Old runtime is force-killed with `taskkill /T /F` after a `running_jobs == 0` check; a job could start in between. | Reported (possible) |
 

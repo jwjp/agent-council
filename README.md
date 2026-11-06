@@ -37,9 +37,13 @@ The [**3.2.0-beta.2 Windows preview**](https://github.com/jwjp/agent-council/rel
 
 Tailscale Serve HTTPS must be configured by the user, and a disabled tailnet may require account-owner web activation. The app does not publish any port automatically. Stable v3.1.0 has no companion UI; native mobile distribution and background push are not available. The separate [iPhone-first native shell](docs/NATIVE_COMPANION.md) has passed iOS simulator build/launch and Keychain tests; it does not change the published desktop preview.
 
+Current source adds an iPhone **Add to Home Screen** guide, fixed non-secret launch metadata, fresh-link pairing inside the web app and bounded per-tab recovery for interrupted input. Foreground reconnect preserves newer typing and checks uncertain submission IDs without automatically sending another job. These changes require a frontend/host rebuild and are not in the published beta.2 assets. [Home Screen steps and storage limits](docs/MOBILE_COMPANION.md#iphone-home-screen--current-source).
+
 ## Develop and verify
 
 Coding agents should start with [AGENTS.md](AGENTS.md) and [shared project status](docs/PROJECT_STATUS.md). Claude and Gemini entry points reference the same rules. Update the status file at the end of meaningful work so the next agent has current decisions, verification evidence and unfinished items. See [build and signing guidance](docs/BUILD_AND_SIGNING.md) for the separate development, CI and release paths.
+
+CI uses Node 22 LTS for development/build tools; Node 24's bundled Fetch currently has a [reported macOS socket crash](https://github.com/nodejs/undici/issues/6075). The shipped Rust applications do not require Node.
 
 Microsoft Store MSIX is under evaluation; see the [distribution assessment and compatibility plan](docs/STORE_DISTRIBUTION.md). No Store package or certification is available yet.
 
