@@ -49,15 +49,27 @@ const screenshot = (target, path) =>
   process.env.COUNCIL_UI_BROWSER === "webkit"
     ? Promise.resolve()
     : target.screenshot({ path });
-async function observeCsp(target) {
+async function observeCompanion(target) {
+  // WebKit's protocol reports some caught Fetch network diagnostics as pageerror.
+  // Observe actual DOM errors/rejections and CSP events, without suppressing them.
+  await target.exposeFunction("recordScriptFailure", (message) => {
+    errors.push(`JS: ${message}`);
+  });
   await target.exposeFunction("recordCspViolation", (directive, blocked) =>
     errors.push(`CSP: ${directive} blocked ${blocked}`),
   );
-  await target.addInitScript(() =>
+  await target.addInitScript(() => {
+    window.addEventListener("error", (event) => {
+      if (event instanceof ErrorEvent)
+        void window.recordScriptFailure(event.message);
+    });
+    window.addEventListener("unhandledrejection", (event) =>
+      void window.recordScriptFailure(String(event.reason)),
+    );
     document.addEventListener("securitypolicyviolation", (event) =>
-      window.recordCspViolation(event.effectiveDirective, event.blockedURI),
-    ),
-  );
+      void window.recordCspViolation(event.effectiveDirective, event.blockedURI),
+    );
+  });
 }
 let web, browser, runtime, page, phone;
 let checks = 0;
@@ -182,8 +194,7 @@ try {
     hasTouch: true,
   });
   phone = await context.newPage();
-  phone.on("pageerror", (e) => errors.push(e.message));
-  await observeCsp(phone);
+  await observeCompanion(phone);
   await phone.goto(invite.url);
   const manifestResponse = await context.request.get(
     origin + "/companion/manifest.webmanifest",
@@ -541,8 +552,7 @@ try {
     Object.defineProperty(navigator, "standalone", { value: true }),
   );
   const home = await homeContext.newPage();
-  home.on("pageerror", (e) => errors.push(e.message));
-  await observeCsp(home);
+  await observeCompanion(home);
   await home.goto(origin + "/companion/");
   await expect(home.getByLabel("Pairing link", { exact: true })).toBeVisible();
   await expect(
@@ -576,12 +586,10 @@ try {
   pass("No browser exceptions or companion CSP violations");
   console.log(`${checks} companion UI checks passed`);
 } catch (e) {
-  await page
-    ?.screenshot({ path: ".runtime-test/desktop-phone-failure.png" })
-    .catch(() => {});
-  await phone
-    ?.screenshot({ path: ".runtime-test/phone-ui-failure.png" })
-    .catch(() => {});
+  if (page)
+    await screenshot(page, ".runtime-test/desktop-phone-failure.png").catch(() => {});
+  if (phone)
+    await screenshot(phone, ".runtime-test/phone-ui-failure.png").catch(() => {});
   throw e;
 } finally {
   await browser?.close();
