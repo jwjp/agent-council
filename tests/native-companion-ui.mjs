@@ -16,7 +16,7 @@ try {
     process.execPath,
     [
       "node_modules/vite/bin/vite.js",
-      "preview",
+      ...(process.argv.includes("--dev") ? [] : ["preview"]),
       "--config",
       "vite.mobile.config.ts",
       "--host",
