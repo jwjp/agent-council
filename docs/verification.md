@@ -2,7 +2,7 @@
 
 ## Portable host source milestone — 2026-11-06
 
-The source workspace now has shared wire types, a GUI-independent `CouncilHost` and the existing desktop launcher. This is not a new published executable release. Local Windows checks passed: 20 Rust tests, 6 frontend tests, frontend build, dependency-boundary checks, runtime integration against each debug launcher and 18 browser UI checks. Runtime fixtures additionally verify host-stop descendant cleanup. No live model/provider sweep was rerun. macOS compilation/runtime CI has been added; its actual result is tracked in [PROJECT_STATUS.md](PROJECT_STATUS.md). Native Mac GUI/provider verification and mobile/remote support remain open.
+The source workspace now has shared wire types, a GUI-independent `CouncilHost` and the existing desktop launcher. This is not a new published executable release. Local Windows checks passed: 20 Rust tests, 6 frontend tests, frontend build, dependency-boundary checks, runtime integration against each debug launcher and 18 browser UI checks. Runtime fixtures additionally verify host-stop descendant cleanup, compatible host reuse and refusal to replace an incompatible busy host. Both Windows and macOS compilation/unit/runtime jobs passed for source commit `dd5510a` in [CI](https://github.com/jwjp/agent-council/actions/runs/42149482970). Browser UI checks run only on Windows. No live model/provider sweep was rerun. Native Mac GUI/provider verification and mobile/remote support remain open.
 
 ## Published v3.1.0 evidence
 
