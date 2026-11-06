@@ -1,6 +1,6 @@
 # Cross-platform recommendation
 
-Assessed 2026-11-06. The [portable host](PORTABLE_HOST.md) is implemented and its Windows/macOS fixture CI passed. The next source preview adds a [mobile browser companion](MOBILE_COMPANION.md) with a separate opt-in gateway, host-approved pairing and device revocation. Actual phone/Tailscale HTTPS reachability still requires tailnet Serve activation; native Mac/provider verification, native mobile builds and push remain pending. The owner has no MacBook; continue hosted CI without blocking Windows-host/browser work on hardware purchase.
+Assessed 2026-11-06. The [portable host](PORTABLE_HOST.md) and [mobile browser companion](MOBILE_COMPANION.md) are implemented; Windows/macOS CI passed. The companion is published as a separate Windows preview with an opt-in gateway, host-approved pairing and device revocation. After owner Serve activation, an isolated HTTPS/browser test passed on 8443. Physical phone/Safari, native Mac/provider verification, native mobile builds and push remain pending. The owner has no MacBook; continue hosted CI without blocking Windows-host/browser work on hardware purchase.
 
 ## Platform roles
 
@@ -14,7 +14,9 @@ Keep **Tauri 2 + React/TypeScript + Rust** as the primary stack. Tauri supports 
 
 A host owns its projects, local CLI sign-ins, quotas, SQLite history and jobs. A phone connected to the Windows host sees the Windows files and that host's account usage; a Mac connected to it can do the same. Choosing a different host does not synchronize repositories, sign-ins or histories automatically. The host must stay powered, awake and reachable for ongoing execution. Client disconnection must not cancel a job.
 
-## Boundaries to introduce
+## Architecture direction
+
+The portable host/shared types and browser companion are now implemented. The design below explains that direction and the remaining native-client work; the implemented browser contract is in [COMPANION_API.md](COMPANION_API.md).
 
 - A small shared Rust domain/protocol crate for typed data and orchestration rules; a desktop-host crate for Axum/SSE, SQLite, CLI subprocesses, filesystem access and usage probes; thin desktop and mobile shells. Keep desktop-only dependencies out of the mobile dependency graph. Refactor incrementally with existing tests rather than rewrite the engine wholesale.
 - Share React message/Markdown/file-preview/usage components, types and a host-aware transport. Separate local desktop bootstrap from paired remote bootstrap. Current `src/api.ts` unconditionally invokes desktop `bootstrap` whenever it is in Tauri, so it cannot serve as the mobile connection path unchanged.
@@ -25,9 +27,9 @@ A host owns its projects, local CLI sign-ins, quotas, SQLite history and jobs. A
 
 Use Tailscale as the first network transport, with the host service still bound to loopback behind a deliberate HTTPS gateway/proxy. Tailscale Serve can proxy a local service privately within the tailnet and enforce tailnet access controls. It is distinct from public Funnel. Do not configure either during a planning task. [Official Serve documentation](https://tailscale.com/docs/features/tailscale-serve).
 
-Tailscale network membership must not substitute for application authorization. Plan explicit host approval and a short-lived, single-use QR pairing challenge, separate revocable credentials per device, scoped project/action access, and protected device storage. Keep the existing local runtime bearer and provider secrets private to the host. Never put reusable tokens in URLs or share the local descriptor with the phone. The gateway must not forward local maintenance/update/settings privileges indiscriminately. These are proposed requirements, not existing guarantees.
+Tailscale network membership must not substitute for application authorization. The browser preview implements explicit host approval and a short-lived, single-use QR pairing challenge, separate revocable HttpOnly device cookies, and scoped project/action routing. Keep the existing local runtime bearer and provider secrets private to the host. Never put reusable tokens in URLs or share the local descriptor with the phone. The gateway does not forward local maintenance/update/settings privileges. Secure native credential transport/storage still needs implementation before shipping native clients.
 
-Reuse the current versioned HTTP operations and durable SSE event IDs/replay rather than replacing streaming just to adopt WebSockets. Add explicit protocol negotiation, reconnect/snapshot consistency and idempotent commands. Check the existing [runtime contract](runtime-api.md) before designing changes; update the spec and relevant tests when implementation starts. No remote contract change is made here.
+The browser preview reuses durable SSE event IDs/replay, foreground snapshots and idempotent commands, with a `companion-v1` protocol identifier and its own [companion contract](COMPANION_API.md). Keep the [local runtime contract](runtime-api.md) separate from remote authorization and maintain both specs/tests when interfaces change.
 
 Treat mobile background suspension as normal. Persist jobs/events on the host, then resynchronize on foreground/reconnection. Native completion alerts need a separate APNs/FCM notification design and possibly a small relay; Tailscale plus an open SSE connection does not guarantee background push delivery. Keep code and logs on the host by default; an eventual notification relay should carry only the necessary notification metadata. No relay/cloud synchronization is needed for the first foreground companion trial.
 

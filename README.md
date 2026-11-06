@@ -32,7 +32,7 @@ Choose **App menu → Check for updates**. Installation is manual, verifies GitH
 
 The Rust engine exposes an authenticated, versioned HTTP/SSE interface on an ephemeral **loopback-only** port. Durable event IDs support replay after a client disconnect. See [runtime protocol](docs/runtime-api.md) and the [OpenAPI contract](docs/openapi.json).
 
-The **3.2.0-beta.1 source preview** adds **App menu → Connect a phone**: an opt-in gateway with expiring QR invitations, host approval, revocable devices and a responsive browser client. Phones can continue an approved project's conversation, inspect per-agent results/progress/files/usage and cancel their own requests. Full-access agents still run with host permissions; project routing does not create an OS sandbox. [Setup and verification limits](docs/MOBILE_COMPANION.md).
+The [**3.2.0-beta.1 Windows preview**](https://github.com/jwjp/agent-council/releases/tag/v3.2.0-beta.1) adds **App menu → Connect a phone**: an opt-in gateway with expiring QR invitations, host approval, revocable devices and a responsive browser client. Phones can continue an approved project's conversation, inspect per-agent results/progress/files/usage and cancel their own requests. Full-access agents still run with host permissions; project routing does not create an OS sandbox. [Setup and verification limits](docs/MOBILE_COMPANION.md).
 
 Tailscale Serve HTTPS must be configured by the user, and a disabled tailnet may require account-owner web activation. The app does not publish any port automatically. Stable v3.1.0 has no companion UI; native iOS/Android binaries and background push are not implemented.
 
