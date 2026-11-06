@@ -285,7 +285,7 @@ try {
     "Usage details and compact phone layout remain accessible at 320px width",
   );
   const hostStarted = await local("/jobs", {
-    request: "WAIT_FOR_CANCEL",
+    request: "WAIT_FOR_CANCEL from desktop",
     request_id: "host-progress",
   });
   await expect(
