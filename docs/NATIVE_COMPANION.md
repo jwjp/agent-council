@@ -48,6 +48,8 @@ Intel runners use `--target x86_64`. The generated Xcode project is ignored; pac
 
 ## Verified milestone — 2026-11-06
 
+Follow-up source `2aba999` (2026-11-07) passed [native CI](https://github.com/jwjp/agent-council/actions/runs/42240335830) under Node 22: 22 frontend tests, mobile build, packaged/development mock IPC, iOS build/install/launch and three actual Simulator Keychain tests with zero failures. Its initial pairing screenshot was inspected. Shared IME/keyboard-viewport regression cases passed 18 phone checks each in [Edge/WebKit CI](https://github.com/jwjp/agent-council/actions/runs/42240335833); those input/geometry events are synthetic, not physical iOS keyboard evidence. See [the device checklist](IPHONE_DEVICE_CHECK.md).
+
 Source `f5f8115` passed [native CI](https://github.com/jwjp/agent-council/actions/runs/42220316056): 16 frontend tests, packaged/development mock-IPC flows, native iOS build, three actual Keychain XCTest cases, simulator install/launch and an inspected clean iPhone 17 Pro pairing screenshot. [Windows/macOS regression CI](https://github.com/jwjp/agent-council/actions/runs/42220316060) also passed. Artifact `ios-simulator-evidence` contains the simulator bundle, screenshot, launch/entitlement diagnostics and XCTest result.
 
 The initial unsigned test host could not access Keychain. Post-link signing with restricted iOS entitlements then prevented app launch. Letting Xcode generate its simulator signature and embedded simulated entitlements resolved both; do not use `--no-sign` for these Keychain checks. No physical iPhone, native-to-real-tailnet pairing, lock/restore behavior on hardware, built-in QR scanner, Android build, push or distribution is verified by this milestone.
