@@ -39,6 +39,8 @@ Tailscale Serve HTTPS must be configured by the user, and a disabled tailnet may
 
 Current source adds an iPhone **Add to Home Screen** guide, fixed non-secret launch metadata, fresh-link pairing inside the web app and bounded per-tab recovery for interrupted input. Foreground reconnect preserves newer typing and checks uncertain submission IDs without automatically sending another job. These changes require a frontend/host rebuild and are not in the published beta.2 assets. [Home Screen steps and storage limits](docs/MOBILE_COMPANION.md#iphone-home-screen--current-source).
 
+The phone composer now guards active IME composition, preserves final input on focus loss and adapts to the visible keyboard area with a compact layout and **Done** control. See the [physical iPhone checklist](docs/IPHONE_DEVICE_CHECK.md) for isolated source testing and the remaining hardware checks.
+
 ## Develop and verify
 
 Coding agents should start with [AGENTS.md](AGENTS.md) and [shared project status](docs/PROJECT_STATUS.md). Claude and Gemini entry points reference the same rules. Update the status file at the end of meaningful work so the next agent has current decisions, verification evidence and unfinished items. See [build and signing guidance](docs/BUILD_AND_SIGNING.md) for the separate development, CI and release paths.

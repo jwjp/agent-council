@@ -63,11 +63,17 @@ async function observeCompanion(target) {
       if (event instanceof ErrorEvent)
         void window.recordScriptFailure(event.message);
     });
-    window.addEventListener("unhandledrejection", (event) =>
-      void window.recordScriptFailure(String(event.reason)),
+    window.addEventListener(
+      "unhandledrejection",
+      (event) => void window.recordScriptFailure(String(event.reason)),
     );
-    document.addEventListener("securitypolicyviolation", (event) =>
-      void window.recordCspViolation(event.effectiveDirective, event.blockedURI),
+    document.addEventListener(
+      "securitypolicyviolation",
+      (event) =>
+        void window.recordCspViolation(
+          event.effectiveDirective,
+          event.blockedURI,
+        ),
     );
   });
 }
@@ -262,7 +268,11 @@ try {
         c.name === "CouncilDevice" && c.httpOnly && c.sameSite === "Strict",
     ),
     JSON.stringify(
-      cookies.map(({ name, httpOnly, sameSite }) => ({ name, httpOnly, sameSite })),
+      cookies.map(({ name, httpOnly, sameSite }) => ({
+        name,
+        httpOnly,
+        sameSite,
+      })),
     ),
   );
   assert.ok(
@@ -296,6 +306,144 @@ try {
   assert.equal((await local("/state")).draft, "Desktop draft stays here");
   pass(
     "Korean composition, Shift+Enter, focus/language changes and private drafts survive reload",
+  );
+  await input.focus();
+  await input.evaluate((el) => {
+    el.dispatchEvent(
+      new CompositionEvent("compositionstart", { bubbles: true }),
+    );
+    el.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        keyCode: 13,
+        isComposing: false,
+        bubbles: true,
+      }),
+    );
+    el.form.requestSubmit();
+  });
+  await pause(500);
+  assert.equal((await local("/state")).messages.length, 0);
+  await input.evaluate((el) => {
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    ).set.call(el, "한글 조합 마지막 글자");
+    el.dispatchEvent(
+      new CompositionEvent("compositionend", { bubbles: true, data: "자" }),
+    );
+  });
+  await expect(input).toHaveValue("한글 조합 마지막 글자");
+  await input.evaluate((el) => {
+    el.dispatchEvent(
+      new CompositionEvent("compositionstart", { bubbles: true }),
+    );
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    ).set.call(el, "포커스 이동에도 입력 보존");
+    el.blur();
+  });
+  await expect
+    .poll(() =>
+      phone.evaluate(() =>
+        fetch("/companion/v1/state")
+          .then((r) => r.json())
+          .then((s) => s.draft),
+      ),
+    )
+    .toBe("포커스 이동에도 입력 보존");
+  await expect(input).toHaveValue("포커스 이동에도 입력 보존");
+  pass(
+    "Explicit IME composition blocks Enter/form submission and retains final DOM input on composition end or blur",
+  );
+
+  await input.focus();
+  await phone.evaluate(() => {
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 340 },
+      offsetTop: { configurable: true, value: 44 },
+      scale: { configurable: true, value: 1 },
+    });
+    visualViewport.dispatchEvent(new Event("resize"));
+  });
+  const shell = phone.locator(".companion-app");
+  await expect(shell).toHaveClass(/phone-keyboard/);
+  await expect
+    .poll(() =>
+      shell.evaluate((el) => Math.round(el.getBoundingClientRect().height)),
+    )
+    .toBe(340);
+  const visibleComposer = () =>
+    phone.evaluate(() => {
+      const app = document
+        .querySelector(".companion-app")
+        .getBoundingClientRect();
+      const input = document
+        .querySelector(".phone-composer textarea")
+        .getBoundingClientRect();
+      const send = document
+        .querySelector(".phone-send")
+        .getBoundingClientRect();
+      return (
+        input.top >= app.top && send.bottom <= app.bottom && input.height >= 38
+      );
+    });
+  assert.ok(await visibleComposer());
+  await screenshot(phone, ".runtime-test/mobile-keyboard.png");
+  await phone.evaluate(() => {
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 150 },
+      offsetTop: { configurable: true, value: 100 },
+      scale: { configurable: true, value: 2 },
+    });
+    visualViewport.dispatchEvent(new Event("resize"));
+  });
+  await pause(100);
+  assert.equal(
+    await shell.evaluate((el) => Math.round(el.getBoundingClientRect().height)),
+    340,
+  );
+  await phone.evaluate(() => {
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 260 },
+      scale: { configurable: true, value: 1 },
+    });
+    visualViewport.dispatchEvent(new Event("resize"));
+  });
+  await expect(shell).toHaveClass(/phone-keyboard-tight/);
+  assert.ok(await visibleComposer());
+  await phone
+    .getByRole("button", { name: "Dismiss keyboard", exact: true })
+    .click();
+  await expect(shell).not.toHaveClass(/phone-keyboard/);
+  await phone.evaluate(() => {
+    for (const name of ["height", "offsetTop", "scale"])
+      delete visualViewport[name];
+    document.activeElement.blur();
+    visualViewport.dispatchEvent(new Event("resize"));
+  });
+  await expect(shell).not.toHaveClass(/phone-keyboard/);
+  await expect(phone.locator(".phone-header")).toBeVisible();
+  await phone.setViewportSize({ width: 844, height: 390 });
+  await expect
+    .poll(() =>
+      shell.evaluate((el) => Math.round(el.getBoundingClientRect().height)),
+    )
+    .toBe(390);
+  assert.ok(await visibleComposer());
+  await expect(
+    phone.getByRole("button", { name: "Disconnect this device", exact: true }),
+  ).toBeVisible();
+  await screenshot(phone, ".runtime-test/mobile-landscape.png");
+  await phone.setViewportSize({ width: 390, height: 844 });
+  await expect
+    .poll(() =>
+      shell.evaluate((el) => Math.round(el.getBoundingClientRect().height)),
+    )
+    .toBe(844);
+  pass(
+    "Simulated keyboard/pan bounds keep input and send controls visible, preserve pinch zoom, and restore after rotation/blur",
   );
   const offlineText = "오프라인 입력을 잃지 않습니다";
   await context.setOffline(true);
@@ -587,9 +735,13 @@ try {
   console.log(`${checks} companion UI checks passed`);
 } catch (e) {
   if (page)
-    await screenshot(page, ".runtime-test/desktop-phone-failure.png").catch(() => {});
+    await screenshot(page, ".runtime-test/desktop-phone-failure.png").catch(
+      () => {},
+    );
   if (phone)
-    await screenshot(phone, ".runtime-test/phone-ui-failure.png").catch(() => {});
+    await screenshot(phone, ".runtime-test/phone-ui-failure.png").catch(
+      () => {},
+    );
   throw e;
 } finally {
   await browser?.close();

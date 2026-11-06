@@ -40,6 +40,8 @@ Unsynced browser input and an ambiguous submission's request ID have a temporary
 
 Returning to the foreground or reconnecting reloads host state before streaming. Delayed saves/snapshots cannot overwrite newer typing; an uncertain submission is checked against the device-scoped request ID, without automatically submitting another job. Clearing browser data, closing a tab or OS storage eviction can lose unsynced input. There is no service worker, offline cold launch, cached private history or background notification delivery. Keep the PC awake and both devices reachable through Tailscale.
 
+The current composer also tracks explicit IME composition, commits the final input value on composition end/focus loss and follows unzoomed visual-viewport bounds when the keyboard opens. In a small editing area it keeps typing/Send visible and offers **Done** to dismiss the keyboard. Compact controls restore when space returns; pinch zoom is not disabled. Automated tests simulate these bounds; use the [physical iPhone checklist](IPHONE_DEVICE_CHECK.md) to establish actual Safari/Home Screen keyboard and app-switch behavior.
+
 ## Development and verification
 
 Build the frontend **before** the host so the current companion assets are embedded:

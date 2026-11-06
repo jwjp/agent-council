@@ -29,6 +29,7 @@ import {
 } from "./quotas";
 import "./companion.css";
 import { CompanionDraft, draftFits, tabStorage } from "./companion-draft";
+import { usePhoneViewport } from "./companion-viewport";
 
 interface Session {
   id: string;
@@ -59,6 +60,9 @@ if (location.hash)
   history.replaceState(null, "", location.pathname + location.search);
 
 function CompanionApp() {
+  const shell = useRef<HTMLDivElement>(null);
+  const composing = useRef(false);
+  usePhoneViewport(shell);
   const [ko, setKo] = useState(() => {
       try {
         return localStorage.getItem("council-phone-language") === "ko";
@@ -140,6 +144,7 @@ function CompanionApp() {
       if (s.protocol !== "companion-v1")
         throw Error("Update this companion to connect.");
       if (draft.current?.id !== s.id) {
+        composing.current = false;
         draft.current?.discard();
         draft.current = new CompanionDraft(
           s.id,
@@ -157,6 +162,7 @@ function CompanionApp() {
     [showDraft],
   );
   const clearSession = useCallback(() => {
+    composing.current = false;
     draft.current?.discard();
     draft.current = null;
     clearTimeout(draftTimer.current || undefined);
@@ -440,7 +446,7 @@ function CompanionApp() {
   }, [snapshot?.messages.length, view]);
   const save = (value: string) => {
     const model = draft.current;
-    if (!model) return;
+    if (!model || model.text === value) return;
     model.edit(value);
     showDraft();
     const revision = model.revision;
@@ -460,6 +466,7 @@ function CompanionApp() {
     const model = draft.current;
     if (
       !model ||
+      composing.current ||
       !model.text.trim() ||
       !draftFits(model.text) ||
       sending ||
@@ -587,7 +594,7 @@ function CompanionApp() {
       : t("Working through it", "작업에 집중하는 중");
   };
   return (
-    <div className="companion-app">
+    <div className="companion-app" ref={shell}>
       <header className="phone-header">
         <div className="phone-brand">
           <span>≋</span>
@@ -977,10 +984,22 @@ function CompanionApp() {
                 value={text}
                 rows={2}
                 onChange={(e) => save(e.target.value)}
+                onCompositionStart={() => {
+                  composing.current = true;
+                }}
+                onCompositionEnd={(e) => {
+                  composing.current = false;
+                  save(e.currentTarget.value);
+                }}
+                onBlur={(e) => {
+                  composing.current = false;
+                  save(e.currentTarget.value);
+                }}
                 onKeyDown={(e) => {
                   if (
                     e.key === "Enter" &&
                     !e.shiftKey &&
+                    !composing.current &&
                     !e.nativeEvent.isComposing &&
                     e.nativeEvent.keyCode !== 229
                   ) {
@@ -994,6 +1013,16 @@ function CompanionApp() {
                   <ShieldCheck size={12} />
                   {t("Host permissions", "PC의 실행 권한 적용")}
                 </span>
+                <button
+                  type="button"
+                  className="phone-dismiss-keyboard"
+                  aria-label="Dismiss keyboard"
+                  onPointerDown={(e) => e.preventDefault()}
+                  onClick={() => composer.current?.blur()}
+                >
+                  {t("Done", "완료")}
+                  <ChevronDown size={14} />
+                </button>
                 {running ? (
                   <button
                     type="button"
