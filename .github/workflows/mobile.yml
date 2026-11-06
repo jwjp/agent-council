@@ -57,6 +57,7 @@ jobs:
         if: always()
         with:
           name: ios-simulator-evidence
+          include-hidden-files: true
           path: |
             .runtime-test/ios-*
             mobile/src-tauri/gen/apple/build/**/Council Companion.app

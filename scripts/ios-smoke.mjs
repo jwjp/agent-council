@@ -1,10 +1,11 @@
 // Native simulator launch evidence; never claim physical-device or signed distribution.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
-const run = (command, args) =>
+const run = (command, args, timeout = 120000) =>
   execFileSync(command, args, {
     encoding: "utf8",
     maxBuffer: 1024 * 1024 * 8,
+    timeout,
   }).trim();
 mkdirSync(".runtime-test", { recursive: true });
 const found = run("find", [
@@ -25,8 +26,10 @@ const device = Object.values(devices)
   .flat()
   .find((d) => d.name.includes("iPhone"));
 if (!device) throw Error("No available iPhone simulator");
+console.log("Booting simulator:", device.name);
 if (device.state !== "Booted") run("xcrun", ["simctl", "boot", device.udid]);
-run("xcrun", ["simctl", "bootstatus", device.udid, "-b"]);
+run("xcrun", ["simctl", "bootstatus", device.udid, "-b"], 600000);
+console.log("Installing packaged app:", app);
 run("xcrun", ["simctl", "install", device.udid, app]);
 const output = run("xcrun", [
   "simctl",
@@ -34,6 +37,7 @@ const output = run("xcrun", [
   device.udid,
   "dev.agentcouncil.companion",
 ]);
+console.log("Launched:", output);
 await new Promise((r) => setTimeout(r, 6000));
 run("xcrun", [
   "simctl",
