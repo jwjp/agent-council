@@ -1,5 +1,9 @@
 # v3 migration verification
 
+## Cursor command collision source fix after beta.1
+
+Explicit read-only local checks identified Grok's generic `agent.exe` and Cursor's separate wrapper; Cursor's own status was `Not logged in`. The source fix prefers `cursor-agent`, rejects an unrecognized generic native command before sending project context, and corrects Windows login guidance to `cursor-agent.cmd`. Published beta.1 bytes are unchanged. [Windows/macOS CI passed](https://github.com/jwjp/agent-council/actions/runs/42178048719) for `5e977b3`: 26 Rust tests, 8 frontend tests/build, both runtime launchers and companion API checks; 18 desktop and 10 companion UI checks on Windows. Local rebuilt headless-host runtime and desktop UI checks also passed. No live Cursor model call or automatic sign-in was used, and this does not establish historical session expiry.
+
 ## Companion source preview — 3.2.0-beta.1
 
 Implements an opt-in, project-bound browser companion and separate device-cookie gateway (runtime revision 4), while keeping local administrator access separate. Current results and release status are tracked in [PROJECT_STATUS.md](PROJECT_STATUS.md). Native fixture tests cover pairing/host approval, single-use/restart invalidation, CSRF, cookie/admin separation, observers, scope, independent drafts/idempotency, execution, open-stream revocation and credential-digest persistence. A phone-sized Edge suite covers the full visible flow. The credential-free Postman collection passed 4 requests / 5 assertions with cloud event reporting disabled. A CLI auto-generated cookie-to-header mapping was unsuitable, so only the curated boundary collection is committed.
