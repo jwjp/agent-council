@@ -24,6 +24,8 @@ Use a free port 1420 and open `http://127.0.0.1:1420` locally on the PC. Choose 
 
 Use **Connect a phone** and follow [the existing connection steps](MOBILE_COMPANION.md#connect-a-phone). Choose a separate unused gateway port and unused HTTPS port after checking `tailscale serve status`; preserve existing routes. Only the companion gateway may be forwarded. Route creation, pairing and host approval remain explicit owner actions. This checklist does not configure Tailscale automatically. Input can be tested without sending a request or making a model call; a work-enabled grant is needed to display the composer. Its approval carries the actual execution permission policy.
 
+An embedded, launcher-isolated Windows build is now prepared; see [its exact source/hash and handoff](LOCAL_TEST_BUILD.md). When testing alongside the production host on the same DNS name, **use a separate Private Browsing session**: cookies are shared across ports, so another HTTPS port alone does not protect the original Safari login. Do not pair the test host in the regular production browser context. Test a separate Home Screen icon/session afterward; copying/installing cookies varies by iOS version, and private-tab results are not Home Screen results. See [RFC 6265 §8.5](https://www.rfc-editor.org/rfc/rfc6265#section-8.5) and [WebKit's Home Screen cookie behavior](https://webkit.org/blog/14787/webkit-features-in-safari-17-2/#login-cookies).
+
 ## Record the device once
 
 Record the source commit, iPhone model, iOS version, Safari tab versus Home Screen app, portrait/landscape, keyboard language and Wi-Fi/cellular. Do not include invitation URLs, cookies, runtime descriptors, account credentials, private project contents or screenshots containing them.
