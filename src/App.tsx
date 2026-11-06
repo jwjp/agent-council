@@ -41,6 +41,9 @@ import {
 } from "lucide-react";
 import { MarkdownContent } from "./markdown";
 import { CompanionSettings } from "./companion-settings";
+import { WorkflowProgress } from "./workflow-view";
+import { compactActivity, snapshotActivity } from "./companion-state";
+import { workflowProgress } from "./workflow";
 import {
   api,
   connect,
@@ -260,7 +263,13 @@ export default function App() {
     setState(next);
     currentFolder.current = next.settings.folder;
     currentJob.current = next.job?.id || "";
-    setActivity(next.activity || []);
+    setActivity((old) =>
+      snapshotActivity(
+        next.activity || [],
+        old.filter((e) => e.job === next.job?.id),
+        next.cursor,
+      ),
+    );
     return next;
   }, []);
   useEffect(() => {
@@ -287,13 +296,17 @@ export default function App() {
                 const base = old.filter((e) => e.job === event.job);
                 return base.some((e) => e.id === event.id)
                   ? base
-                  : [...base, event].slice(-1000);
+                  : compactActivity([...base, event]);
               });
-            if (["message", "done", "usage", "limits"].includes(event.kind)) {
-              if (refreshTimer.current) clearTimeout(refreshTimer.current);
-              refreshTimer.current = setTimeout(() => {
-                void refresh().catch((e) => setError(String(e)));
-              }, 150);
+            if (
+              ["message", "done", "usage", "limits"].includes(event.kind) ||
+              (event.job && event.job !== currentJob.current)
+            ) {
+              if (!refreshTimer.current)
+                refreshTimer.current = setTimeout(() => {
+                  refreshTimer.current = null;
+                  void refresh().catch((e) => setError(String(e)));
+                }, 150);
             }
             if (event.kind === "message" && event.agent === "council")
               setRight("council");
@@ -457,6 +470,10 @@ export default function App() {
     ? right
     : options.find((a) => a !== selectedLeft) || selectedLeft;
   const activeActivity = activity.filter((e) => e.job === state?.job?.id);
+  const needsInput =
+    state?.job &&
+    workflowProgress(state.job, activeActivity, state.settings).stage ===
+      "question";
   const closeModal = useCallback(() => setModal(null), []);
   async function folderShortcut() {
     try {
@@ -807,32 +824,42 @@ export default function App() {
                         <span className={"job-badge " + state.job.status}>
                           {busy ? (
                             <span className="pulse-dot" />
+                          ) : needsInput ? (
+                            <MessageSquare size={12} />
                           ) : (
                             <CheckCheck size={12} />
                           )}{" "}
-                          {t(
-                            (
-                              {
-                                running: "In progress",
-                                done: "Complete",
-                                failed: "Needs attention",
-                                cancelled: "Cancelled",
-                                interrupted: "Interrupted",
-                              } as Record<string, string>
-                            )[state.job.status] || state.job.status,
-                            (
-                              {
-                                running: "진행 중",
-                                done: "완료",
-                                failed: "확인 필요",
-                                cancelled: "취소됨",
-                                interrupted: "중단됨",
-                              } as Record<string, string>
-                            )[state.job.status] || state.job.status,
-                          )}
+                          {needsInput
+                            ? t("Your input", "답변 필요")
+                            : t(
+                                (
+                                  {
+                                    running: "In progress",
+                                    done: "Complete",
+                                    failed: "Needs attention",
+                                    cancelled: "Cancelled",
+                                    interrupted: "Interrupted",
+                                  } as Record<string, string>
+                                )[state.job.status] || state.job.status,
+                                (
+                                  {
+                                    running: "진행 중",
+                                    done: "완료",
+                                    failed: "확인 필요",
+                                    cancelled: "취소됨",
+                                    interrupted: "중단됨",
+                                  } as Record<string, string>
+                                )[state.job.status] || state.job.status,
+                              )}
                         </span>
                       </div>
                     )}
+                    <WorkflowProgress
+                      job={state.job}
+                      events={activeActivity}
+                      settings={state.settings}
+                      t={t}
+                    />
                     {split ? (
                       <div
                         className="split-workspace"
@@ -1370,14 +1397,25 @@ function AgentPane({
   now: number;
 }) {
   const [log, setLog] = useState(false),
-    [expanded, setExpanded] = useState(false);
+    [expanded, setExpanded] = useState(false),
+    [unread, setUnread] = useState(false);
   const closeNote = useCallback(() => setExpanded(false), []);
   const ref = useRef<HTMLDivElement>(null),
     follow = useRef(true);
   const start = state.messages.map((m) => m.role).lastIndexOf("You");
+  const progress = state.job
+    ? workflowProgress(state.job, events, state.settings)
+    : null;
   const messages = state.messages
     .slice(start + 1)
-    .filter((m) => m.role === agent || m.role === (names[agent] || agent));
+    .filter(
+      (m) =>
+        m.role === agent ||
+        m.role === (names[agent] || agent) ||
+        (agent === "council" &&
+          progress?.stage === "question" &&
+          progress.members.includes(m.role)),
+    );
   const last = latestPhase(events, agent);
   const notes = events.filter(
     (e) =>
@@ -1405,10 +1443,13 @@ function AgentPane({
           data: { truncated: !archived },
         }
       : rawNote;
+  const scrollKey = log ? notes.at(-1)?.id : messages.length;
   useLayoutEffect(() => {
-    if (follow.current && ref.current)
+    if (follow.current && ref.current) {
       ref.current.scrollTop = ref.current.scrollHeight;
-  }, [messages.length, notes.length, log, agent]);
+      setUnread(false);
+    } else if (!log) setUnread(true);
+  }, [scrollKey, log, agent]);
   const active =
     state.job?.status === "running" &&
     last &&
@@ -1449,7 +1490,9 @@ function AgentPane({
         )}
         <span>
           {agent === "council"
-            ? t("The shared conclusion", "의견을 모은 최종 결론")
+            ? progress?.running
+              ? stageLabel(progress.stage, t)
+              : t("The shared conclusion", "의견을 모은 최종 결론")
             : phaseLabel(last?.text || "", t)}
         </span>
         {active && (
@@ -1540,6 +1583,21 @@ function AgentPane({
           </div>
         )}
       </div>
+      {unread && !log && (
+        <button
+          className="new-results"
+          onClick={() => {
+            follow.current = true;
+            ref.current?.scrollTo({
+              top: ref.current.scrollHeight,
+              behavior: "smooth",
+            });
+            setUnread(false);
+          }}
+        >
+          {t("New results ↓", "새 의견 보기 ↓")}
+        </button>
+      )}
       {note && (
         <div className="work-note">
           <button onClick={() => setExpanded(!expanded)}>

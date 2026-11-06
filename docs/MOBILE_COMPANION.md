@@ -1,6 +1,6 @@
 # Mobile web companion preview
 
-Source version: **3.2.0-beta.1**, runtime revision **4**. This is a browser companion for a Windows/macOS execution host, not an iOS/Android native app. The gateway is off by default. See project status for the actual preview release and verification state.
+Source version: **3.2.0-beta.2**, runtime revision **4**. This is a browser companion for a Windows/macOS execution host, not an iOS/Android native app. The gateway is off by default. See project status for the actual preview release and verification state.
 
 ## Connect a phone
 

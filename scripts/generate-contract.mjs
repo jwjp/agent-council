@@ -35,7 +35,7 @@ const paths = {
     get: {
       operationId: "snapshot",
       description:
-        "Settings, current project messages, latest job, last 1000 job events, usage, durable cursor and running_jobs count.",
+        "Settings, current project messages, latest job, bounded activity snapshot, usage, durable cursor and running_jobs count. Activity retains each agent's latest complete note and up to 40 events of each milestone/tool/error kind; full durable history remains available through SSE replay.",
       responses,
     },
   },
@@ -126,7 +126,7 @@ const paths = {
       responses: {
         200: {
           description:
-            "SSE replay followed by live persisted events. Each JSON data object has id,job,folder,agent,kind,text,stage,time,data. Reconnect with after=last processed id. Heartbeats contain no data.",
+            "SSE replay followed by live persisted events. Each JSON data object has id,job,folder,agent,kind,text,stage,time,data. A workflow event starts a real stage with data.participants; phase Done/Failed events count per-stage completion. A question stage awaits the next user turn. Reconnect with after=last processed id. Heartbeats contain no data.",
           content: { "text/event-stream": { schema: string } },
         },
         401: responses[401],

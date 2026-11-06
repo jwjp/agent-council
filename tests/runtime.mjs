@@ -24,6 +24,10 @@ const exe = resolve(
 );
 let daemon;
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+const turnMessages = (state) =>
+  state.messages.slice(
+    state.messages.map((m) => m.role).lastIndexOf("You") + 1,
+  );
 try {
   const compile = spawnSync(
     "rustc",
@@ -164,6 +168,88 @@ try {
   assert.equal(state.usage.claude.input_tokens, 33);
   assert.equal(state.usage.codex.input_tokens, 20);
   assert.equal(state.usage.grok.input_tokens, 24);
+  await request("/jobs", {
+    request: "SMOOTH_PROGRESS",
+    request_id: "smooth-progress",
+  });
+  for (let i = 0; i < 100; i++) {
+    state = await request("/state");
+    if (
+      turnMessages(state).some(
+        (m) => m.role === "codex" && m.stage === "review",
+      ) &&
+      existsSync(join(project, "slow-review-started.txt"))
+    )
+      break;
+    await pause(100);
+  }
+  assert.equal(
+    state.job.status,
+    "running",
+    "Fast review must be published before the slow peer finishes",
+  );
+  assert.ok(
+    turnMessages(state).some((m) => m.role === "codex" && m.stage === "review"),
+  );
+  assert.ok(
+    !turnMessages(state).some((m) => m.role === "grok" && m.stage === "review"),
+  );
+  writeFileSync(join(project, "release-slow-review.txt"), "continue");
+  for (let i = 0; i < 100; i++) {
+    state = await request("/state");
+    if (state.job.status !== "running") break;
+    await pause(100);
+  }
+  assert.equal(state.job.status, "done");
+  const reviews = state.activity.filter(
+    (e) => e.kind === "phase" && e.text === "Done" && e.stage === "review",
+  );
+  const discussion = state.activity.find(
+    (e) => e.kind === "workflow" && e.stage === "discussion",
+  );
+  assert.equal(reviews.length, 2);
+  assert.ok(
+    discussion.id > Math.max(...reviews.map((e) => e.id)),
+    "Discussion starts only after initial reviews complete",
+  );
+  await request("/jobs", {
+    request: "ASK_FOR_DIRECTION",
+    request_id: "clarification",
+  });
+  for (let i = 0; i < 100; i++) {
+    state = await request("/state");
+    if (state.job.status !== "running") break;
+    await pause(100);
+  }
+  assert.equal(state.job.status, "done");
+  assert.equal(
+    state.activity.filter((e) => e.kind === "workflow").at(-1).stage,
+    "question",
+  );
+  assert.ok(!state.activity.some((e) => e.stage === "review"));
+  await request("/jobs", {
+    request: "IMPLEMENT_REVIEW_FIX FAIL_GROK_REVIEW",
+    request_id: "failed-peer",
+  });
+  for (let i = 0; i < 100; i++) {
+    state = await request("/state");
+    if (state.job.status !== "running") break;
+    await pause(100);
+  }
+  assert.equal(state.job.status, "done");
+  assert.ok(
+    state.activity.some(
+      (e) => e.kind === "workflow" && e.stage === "verification",
+    ),
+  );
+  assert.ok(
+    !state.activity.some(
+      (e) =>
+        e.agent === "grok" &&
+        ["verification", "discussion", "report"].includes(e.stage),
+    ),
+    "Failed reviewers must not be retried in later stages",
+  );
   for (const coder of ["agy", "gemini", "agent"]) {
     await request(
       "/settings",

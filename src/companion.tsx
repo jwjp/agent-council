@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { MarkdownContent } from "./markdown";
 import { compactActivity, snapshotActivity } from "./companion-state";
+import { WorkflowProgress } from "./workflow-view";
+import { workflowProgress } from "./workflow";
 import { names, marks, type Snapshot, type Activity } from "./types";
 import {
   windows as quotaWindows,
@@ -250,7 +252,9 @@ function CompanionApp() {
                 const event = JSON.parse(data) as Activity;
                 if (event.id > cursor.current) {
                   cursor.current = event.id;
-                  if (["note", "phase", "tool"].includes(event.kind)) {
+                  if (
+                    ["note", "phase", "tool", "workflow"].includes(event.kind)
+                  ) {
                     setSnapshot((previous) =>
                       previous && previous.job?.id === event.job
                         ? {
@@ -265,7 +269,9 @@ function CompanionApp() {
                   }
                   if (
                     ((event.job && event.job !== currentJob.current) ||
-                      !["note", "phase", "tool"].includes(event.kind)) &&
+                      !["note", "phase", "tool", "workflow"].includes(
+                        event.kind,
+                      )) &&
                     !refreshTimer
                   )
                     refreshTimer = setTimeout(() => {
@@ -429,10 +435,21 @@ function CompanionApp() {
   const participants = [session?.coder, ...(session?.reviewers || [])].filter(
     (a): a is string => !!a,
   );
+  const progress = snapshot?.job
+    ? workflowProgress(snapshot.job, snapshot.activity, snapshot.settings)
+    : null;
+  const awaitingReply = progress?.stage === "question";
+  const lastUser =
+    snapshot?.messages.map((m) => m.role).lastIndexOf("You") ?? -1;
   const messages =
-    snapshot?.messages.filter((m) =>
+    snapshot?.messages.filter((m, index) =>
       view === "council"
-        ? m.role === "You" || m.role === "council" || m.role === "system"
+        ? m.role === "You" ||
+          m.role === "council" ||
+          m.role === "system" ||
+          (awaitingReply &&
+            progress.members.includes(m.role) &&
+            index > lastUser)
         : m.role === "You" || m.role === view,
     ) || [];
   const latestByAgent = (agent: string) =>
@@ -673,6 +690,14 @@ function CompanionApp() {
               })()}
             <div ref={bottom} />
           </main>
+          {snapshot && (
+            <WorkflowProgress
+              job={snapshot.job}
+              events={snapshot.activity}
+              settings={snapshot.settings}
+              t={t}
+            />
+          )}
           <section className="phone-activity">
             <button
               className="activity-toggle"

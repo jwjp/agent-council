@@ -36,6 +36,14 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 
 ## Recent tasks — keep the latest five
 
+### 2026-11-06 — Smoother review/conference workflow (beta.2 candidate)
+
+- Parallel review, recheck and discussion results are persisted/displayed on completion instead of waiting for the slowest participant. Later rounds retain their barrier, and aggregation/report selection keeps configured order. Failed participants are excluded from downstream retries. A lead clarification returns directly to the user.
+- Added a shared desktop/phone progress rail driven by durable `workflow` stage/member events and actual phase outcomes. Questions appear in the council pane/tab with an input-needed status. Reading older results preserves scroll position and offers an explicit new-results button.
+- Desktop/phone snapshots now return latest complete notes plus bounded milestone/tool/error activity, keeping original durable history through SSE replay. Compaction preserves workflow/phase milestones under noisy tools; snapshots merge newer streamed events. No user settings, paired grants or production jobs were changed during this task.
+- Prepared source version 3.2.0-beta.2, also carrying the previous Cursor collision/login-command fixes. Passed local frontend tests/build and new gated fast/slow-review, clarification, failed-peer and snapshot-retention regressions; final UI, Windows/macOS CI and release-EXE checks are being completed. Existing beta.1/stable assets are unchanged until a distinct beta.2 prerelease is published.
+- Next: complete verification, publish the separate Windows preview, then validate the updated flow with the owner's paired phone before native mobile packaging. No paid provider sweep or new signing claim.
+
 ### 2026-11-06 — Cursor/Grok CLI collision diagnosis and source fix
 
 - Owner reports successful companion connection, then recurring Cursor authentication failures. Initial explicit local checks found both Cursor wrappers and Grok's `agent.exe`; Grok reports `1.0.77`, Cursor reports `2026.11.05-86047df`, and Cursor's own status was `Not logged in`. This established CLI collision/missing Cursor sign-in, not repeated historical session expiry. After the owner used the explicit wrapper, a read-only status check confirmed successful Cursor login. IDE quota access remains independent.
@@ -67,11 +75,3 @@ Last updated: 2026-11-06. Read with [AGENTS.md](../AGENTS.md); verify time-sensi
 - Recorded current gaps: mobile Tauri would invoke desktop bootstrap, Windows-specific paths/auth/update handling, no remote gateway/pairing, and no verified macOS process/CLI lifecycle.
 - Verification: documentation links, unchanged application version and `git diff --check` passed. No implementation, platform build, API execution, remote configuration, signing or store publication performed.
 - Next: portable host/module boundary and macOS audit; then an end-to-end paired phone-to-host trial. Preserve the uncommitted Store assessment documentation from the preceding task.
-
-### 2026-11-06 — Microsoft Store / MSIX feasibility assessment
-
-- Checked Microsoft's current registration, signing, SmartScreen, packaged-desktop and Store-policy documentation, plus Tauri's installer guide and Microsoft's Tauri MSIX sample.
-- Recommended an isolated Store MSIX compatibility trial while retaining portable development builds. Corrected the claim that unsigned files cannot build reputation; distinguished Store MSIX signing from publisher-signed MSI/EXE listings and GitHub artifacts.
-- Audited current configuration, updater and data-path sources; documented external CLI/auth access, package updates, detached engine lifecycle and migration as unverified compatibility work. Added `STORE_DISTRIBUTION.md` and linked the assessment from build guidance and README.
-- Verification: local Markdown links, agent entry points, unchanged app version and `git diff --check` passed. No app build, MSIX installation, certificate change, account action or Store submission was performed.
-- Next: obtain Partner Center product identity, then implement/test an isolated packaging trial if requested; do not present the assessment as Store certification.

@@ -234,7 +234,7 @@ impl Store {
         result.reverse();
         Ok(result)
     }
-    pub fn companion_job_events(&self, job: &str) -> Result<Vec<Event>> {
+    pub fn snapshot_job_events(&self, job: &str) -> Result<Vec<Event>> {
         let db = self.0.lock().unwrap();
         let mut rows = Vec::new();
         let mut notes=db.prepare("SELECT id,value FROM events WHERE json_extract(value,'$.job')=? AND json_extract(value,'$.kind')='note' AND json_extract(value,'$.agent')=? ORDER BY id DESC LIMIT 1")?;
@@ -248,7 +248,7 @@ impl Store {
             );
         }
         let mut activity=db.prepare("SELECT id,value FROM events WHERE json_extract(value,'$.job')=? AND json_extract(value,'$.kind')=? ORDER BY id DESC LIMIT 40")?;
-        for kind in ["phase", "tool", "error", "done"] {
+        for kind in ["workflow", "phase", "tool", "error", "done"] {
             rows.extend(
                 activity
                     .query_map(params![job, kind], |r| {
@@ -292,6 +292,58 @@ impl Store {
 mod tests {
     use super::*;
     #[test]
+    fn snapshot_milestones_survive_verbose_tools() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let store = Store::open(&root).unwrap();
+        for (kind, text, data) in [
+            ("workflow", "review", json!({"participants":["codex"]})),
+            ("phase", "Done", Value::Null),
+        ] {
+            store
+                .event(Event {
+                    id: 0,
+                    job: "j".into(),
+                    folder: "p".into(),
+                    agent: if kind == "phase" { "codex" } else { "" }.into(),
+                    kind: kind.into(),
+                    text: text.into(),
+                    stage: "review".into(),
+                    time: now(),
+                    data,
+                })
+                .unwrap();
+        }
+        for _ in 0..200 {
+            store
+                .event(Event {
+                    id: 0,
+                    job: "j".into(),
+                    folder: "p".into(),
+                    agent: "grok".into(),
+                    kind: "tool".into(),
+                    text: "Reading".into(),
+                    stage: "review".into(),
+                    time: now(),
+                    data: Value::Null,
+                })
+                .unwrap();
+        }
+        let compact = store.snapshot_job_events("j").unwrap();
+        assert_eq!(compact.iter().filter(|e| e.kind == "tool").count(), 40);
+        assert!(compact
+            .iter()
+            .any(|e| e.kind == "workflow" && e.data["participants"][0] == "codex"));
+        assert!(compact
+            .iter()
+            .any(|e| e.kind == "phase" && e.text == "Done"));
+        drop(store);
+        assert!(root
+            .canonicalize()
+            .unwrap()
+            .starts_with(std::env::temp_dir().canonicalize().unwrap()));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
     fn companion_snapshots_keep_latest_complete_notes_without_erasing_history() {
         let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
         let store = Store::open(&root).unwrap();
@@ -310,7 +362,7 @@ mod tests {
                 })
                 .unwrap();
         }
-        let compact = store.companion_job_events("job").unwrap();
+        let compact = store.snapshot_job_events("job").unwrap();
         assert_eq!(compact.len(), 1);
         assert!(compact[0].text.ends_with("[file](main.rs:2)"));
         assert_eq!(store.job_events("job").unwrap().len(), 2);

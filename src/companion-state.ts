@@ -6,10 +6,17 @@ export function compactActivity(input: Activity[]): Activity[] {
     (a, b) => a.id - b.id,
   );
   const agents = new Set<string>();
+  const milestones = new Set<string>();
   let other = 0;
   return unique
     .reverse()
     .filter((e) => {
+      if (["workflow", "phase"].includes(e.kind)) {
+        const key = [e.job, e.agent, e.stage, e.kind].join(":");
+        if (milestones.has(key)) return false;
+        milestones.add(key);
+        return true;
+      }
       if (e.kind === "note") {
         const key = e.job + ":" + e.agent;
         if (agents.has(key)) return false;

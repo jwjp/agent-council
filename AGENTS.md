@@ -16,6 +16,7 @@ This is the canonical project instruction file. `CLAUDE.md` and `GEMINI.md` poin
 - A local AI coding orchestrator with an optional lead agent and optional independent reviewers. Do not require two agents, a lead, or a reviewer. At least one participant is needed to run a request.
 - The lead implements requested changes and checks. Reviewers inspect and give opinions without editing. For implemented work with confirmed in-scope mistakes, there is one bounded correction pass and read-only rechecks, then discussion and an attributed final report. Analysis requests must not silently turn into implementation.
 - Preserve conversation context and drafts. Show the user's current request, each agent's progress, retained working notes and distinct final results. Progress must correspond to observed events, not invented activity.
+- Publish parallel review/recheck/discussion results as each finishes, while preserving configured order for evidence and report selection. Keep the barrier before the next round, exclude failed participants from repeated downstream calls, and return a lead's explicit clarification to the user before starting review rounds.
 - English is the default UI language; Korean is supported. Preserve IME composition, Enter-to-send, Shift+Enter, focus changes and draft persistence.
 - Design and performance both matter: readable compact typography, coherent spacing, light/dark contrast, responsive layouts, in-window dialogs and stable scrolling over Markdown tables. Verify visual changes instead of relying only on compilation.
 - Users select the project and optional read-only reference folders. File links must resolve safely and open at the correct line. Bound large-file rendering.
@@ -27,6 +28,7 @@ This is the canonical project instruction file. `CLAUDE.md` and `GEMINI.md` poin
 - **Tauri 2 + React/TypeScript + Rust**. No Python/Electron runtime; Node.js is for development/builds.
 - `src/App.tsx`, `src/style.css`: shell, composition, conversation, split panes, agent settings and notes.
 - `src/usage-panel.tsx`, `src/quotas.ts`: quota UI and summaries; `src/file-preview.tsx`, `src/links.ts`: file navigation.
+- `src/workflow.ts`, `workflow-view.tsx`, `workflow.css`: shared desktop/phone stage rail based on persisted workflow/phase events. Keep counts tied to actual participants and outcomes; preserve phase milestones when compacting noisy tool/note streams.
 - `src/api.ts`, `src/types.ts`: frontend runtime interface and shared shapes.
 - `src-tauri/src/main.rs`: thin Tauri desktop shell and native commands.
 - `src-tauri/crates/council-core`: shared wire types/version; no GUI, database, subprocess or provider dependencies.

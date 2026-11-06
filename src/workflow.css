@@ -1,0 +1,130 @@
+.workflow-progress {
+  flex: none;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 11px 14px;
+  background: var(--surface, #fff);
+  margin-bottom: 12px;
+  color: var(--ink, #303640);
+}
+.workspace > .workflow-progress {
+  margin: 0 24px 12px;
+}
+@media (max-width: 950px) {
+  .workspace > .workflow-progress {
+    margin-inline: 16px;
+  }
+}
+.workflow-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 18px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.workflow-heading strong {
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+}
+.workflow-count {
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.workflow-light {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+.workflow-light.active {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--soft);
+}
+.workflow-light.issue {
+  background: #c38b50;
+}
+.workflow-steps {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 16px;
+  padding: 0;
+  margin: 10px 0 0;
+  font-size: 10px;
+  color: var(--muted);
+}
+.workflow-steps li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: color 0.18s ease;
+}
+.workflow-node {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 9px;
+  background: var(--soft);
+  font-variant-numeric: tabular-nums;
+}
+.workflow-steps [data-state="active"] {
+  color: var(--accent);
+  font-weight: 550;
+}
+.workflow-steps [data-state="active"] .workflow-node {
+  background: var(--accent);
+  color: #fff;
+}
+.workflow-steps [data-state="done"] {
+  color: var(--ink, #303640);
+}
+.new-results {
+  flex: none;
+  align-self: center;
+  margin: 5px auto;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface, #fff);
+  color: var(--accent);
+  font-size: 10px;
+  box-shadow: 0 2px 8px #00000008;
+}
+@media (max-width: 500px) {
+  .workflow-progress[data-running="false"]:not([data-stage="question"])
+    .workflow-steps {
+    display: none;
+  }
+  .workflow-progress {
+    padding: 9px 11px;
+    margin: 0 12px 8px;
+  }
+  .workflow-heading {
+    flex-wrap: wrap;
+    font-size: 11px;
+  }
+  .workflow-count {
+    font-size: 10px;
+  }
+  .workflow-steps {
+    gap: 6px 12px;
+    font-size: 10px;
+  }
+  .workflow-steps li {
+    white-space: nowrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workflow-steps li {
+    transition: none;
+  }
+}

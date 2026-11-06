@@ -128,7 +128,7 @@ const paths = {
         },
       ],
       description:
-        "SSE replay/live events for approved project and sanitized global quota updates only. Global IDs may have gaps. Revocation, expiry or gateway disable ends access.",
+        "SSE replay/live events for approved project and sanitized global quota updates only. Additive workflow events carry stage and data.participants; per-agent phase Done/Failed events count actual completions. question awaits a user reply. Global IDs may have gaps. Revocation, expiry or gateway disable ends access.",
       responses: {
         ...responses,
         200: {

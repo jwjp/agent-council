@@ -217,8 +217,49 @@ try {
   await expect(
     page.getByText("Engine connected", { exact: true }),
   ).toBeVisible();
+  await page.locator(".composer textarea").fill("SMOOTH_PROGRESS");
+  await page.locator(".composer textarea").press("Enter");
+  const progress = page.getByRole("region", { name: "Council progress" });
+  // A labelled section is exposed as a region to assistive technology.
+  await expect(progress).toContainText("1/2 finished", { timeout: 12000 });
+  await expect(progress).toContainText("Gathering independent perspectives");
+  await page.locator(".agent-pane select").first().selectOption("codex");
+  const fastPane = page.locator(".agent-pane").first();
+  await expect(
+    fastPane
+      .locator(".pane-report")
+      .getByRole("heading", { name: "Fast review" }),
+  ).toBeVisible();
+  assert.equal((await req("/state")).job.status, "running");
+  await page.screenshot({ path: ".runtime-test/workflow-review.png" });
+  pass(
+    "Fast review is readable immediately while the progress rail counts the remaining peer",
+  );
+  await fastPane.locator(".pane-content").evaluate((el) => {
+    el.scrollTop = 0;
+    el.dispatchEvent(new Event("scroll"));
+  });
+  writeFileSync(join(project, "release-slow-review.txt"), "continue");
+  await expect(progress).toContainText("Ready for your next step", {
+    timeout: 20000,
+  });
+  await expect(
+    fastPane.getByRole("button", { name: "New results ↓" }),
+  ).toBeVisible();
+  assert.equal(
+    await fastPane.locator(".pane-content").evaluate((el) => el.scrollTop),
+    0,
+  );
+  await fastPane.getByRole("button", { name: "New results ↓" }).click();
+  await page.locator(".agent-pane select").first().selectOption("claude");
+  pass(
+    "New discussion results do not pull a reader away from an earlier review",
+  );
   await page.locator(".composer textarea").fill("IMPLEMENT_REVIEW_FIX");
   await page.locator(".composer textarea").press("Enter");
+  await expect(page.locator(".current-request")).toContainText(
+    "IMPLEMENT_REVIEW_FIX",
+  );
   await expect(page.locator(".job-badge.done")).toBeVisible({ timeout: 15000 });
   s = await req("/state");
   assert.equal(
@@ -365,6 +406,27 @@ try {
   ).toBeVisible();
   pass("Small viewport keeps modal and save controls in bounds");
   await page.screenshot({ path: ".runtime-test/ui-small-settings.png" });
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await page.locator(".agent-pane select").last().selectOption("council");
+  await req("/jobs", {
+    request: "ASK_FOR_DIRECTION",
+    request_id: "ui-clarification",
+  });
+  await expect(
+    page.getByRole("region", { name: "Council progress" }),
+  ).toContainText("Your answer will guide the next step", { timeout: 15000 });
+  await expect(page.locator(".job-badge")).toContainText("Your input");
+  await expect(
+    page
+      .locator(".agent-pane")
+      .last()
+      .locator(".pane-report")
+      .getByText("Should this use SQLite or PostgreSQL?", { exact: true }),
+  ).toBeVisible();
+  pass(
+    "Clarifications remain visible in the council pane and ask for input without extra review rounds",
+  );
   assert.deepEqual(errors, [], "Unexpected browser exceptions");
   pass("No unhandled browser errors");
   console.log(`${checks} UI checks passed`);

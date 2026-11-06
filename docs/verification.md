@@ -1,5 +1,9 @@
 # v3 migration verification
 
+## Review/conference flow — beta.2 candidate
+
+The source now publishes parallel results as they finish, retains stable evidence order and round barriers, excludes failed peers from downstream retries and returns explicit lead questions for user input. Desktop and phone share a real workflow/member-count rail and compact milestone/note snapshots; readers can keep an earlier scroll position when new results arrive. Native gated fixtures prove a fast review is saved while another reviewer is still blocked, discussion starts after the review barrier, failed peers are not repeatedly retried and questions skip extra rounds. Source is 3.2.0-beta.2; final CI/release evidence is recorded in [PROJECT_STATUS.md](PROJECT_STATUS.md). No paid provider sweep or additional physical-phone test is implied.
+
 ## Cursor command collision source fix after beta.1
 
 Explicit read-only local checks identified Grok's generic `agent.exe` and Cursor's separate wrapper; Cursor's own status was `Not logged in`. The source fix prefers `cursor-agent`, rejects an unrecognized generic native command before sending project context, and corrects Windows login guidance to `cursor-agent.cmd`. Published beta.1 bytes are unchanged. [Windows/macOS CI passed](https://github.com/jwjp/agent-council/actions/runs/42178048719) for `5e977b3`: 26 Rust tests, 8 frontend tests/build, both runtime launchers and companion API checks; 18 desktop and 10 companion UI checks on Windows. Local rebuilt headless-host runtime and desktop UI checks also passed. No live Cursor model call or automatic sign-in was used, and this does not establish historical session expiry.

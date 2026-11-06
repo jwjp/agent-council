@@ -292,6 +292,21 @@ try {
   pass(
     "Usage details and compact phone layout remain accessible at 320px width",
   );
+  await local("/jobs", {
+    request: "ASK_FOR_DIRECTION",
+    request_id: "phone-clarification",
+  });
+  await expect(
+    phone.getByRole("region", { name: "회의 진행 상황" }),
+  ).toContainText("답변을 주시면 이어서 진행할 수 있어요", { timeout: 15000 });
+  await expect(
+    phone
+      .locator(".phone-message")
+      .getByText("Should this use SQLite or PostgreSQL?", { exact: true }),
+  ).toBeVisible();
+  pass(
+    "Phone shows the lead's clarification directly in the council tab without unnecessary rounds",
+  );
   const hostStarted = await local("/jobs", {
     request: "WAIT_FOR_CANCEL from desktop",
     request_id: "host-progress",
