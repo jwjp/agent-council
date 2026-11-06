@@ -7,6 +7,7 @@ import {
   chmodSync,
   writeFileSync,
   readFileSync,
+  realpathSync,
   existsSync,
   rmSync,
   readdirSync,
@@ -257,8 +258,8 @@ try {
   await local("/settings", { ...config, folder: other }, "PUT");
   const state = await json(await p.request("/companion/v1/state"));
   assert.equal(
-    state.settings.folder.replaceAll("\\", "/"),
-    project.replaceAll("\\", "/"),
+    realpathSync(state.settings.folder),
+    realpathSync(project),
   );
   assert.equal(state.draft, "Phone draft 한글");
   await json(
@@ -294,8 +295,8 @@ try {
   assert.equal(finished.job.status, "done");
   assert.ok(finished.messages.some((m) => m.role === "council"));
   assert.equal(
-    (await local("/state")).settings.folder.replaceAll("\\", "/"),
-    other.replaceAll("\\", "/"),
+    realpathSync((await local("/state")).settings.folder),
+    realpathSync(other),
   );
   assert.equal((await local("/state")).messages.length, 0);
   assert.equal((await json(await p2.request("/companion/v1/state"))).draft, "");

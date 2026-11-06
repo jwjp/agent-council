@@ -18,6 +18,7 @@ const responses = {
     description: "Wrong origin, view-only grant or outside approved scope",
   },
   409: { description: "Project already has active work" },
+  413: { description: "Request body exceeds 128 KiB" },
   429: { description: "Rate or device/invitation limit" },
   503: { description: "Gateway disabled or unavailable" },
 };
