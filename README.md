@@ -36,6 +36,8 @@ This release is a **Windows desktop application**. Mobile binaries, device pairi
 
 ## Develop and verify
 
+Coding agents should start with [AGENTS.md](AGENTS.md) and [shared project status](docs/PROJECT_STATUS.md). Claude and Gemini entry points reference the same rules. Update the status file at the end of meaningful work so the next agent has current decisions, verification evidence and unfinished items. See [build and signing guidance](docs/BUILD_AND_SIGNING.md) for the separate development, CI and release paths.
+
 Install Rust, Windows C++ build tools, Node.js and WebView2, then:
 
 ```powershell

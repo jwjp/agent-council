@@ -1,0 +1,85 @@
+# Agent Council — instructions for coding agents
+
+This is the canonical project instruction file. `CLAUDE.md` and `GEMINI.md` point here; do not maintain competing copies of these rules.
+
+## Start and finish every task
+
+1. Read this file and [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Consult the relevant source and documentation before editing; the status file is a handoff, not proof that code still behaves that way.
+2. Check `git status` and preserve unrelated user changes. Continue work authorized by the current conversation without introducing repeated approval requests.
+3. Implement the requested behavior, run checks appropriate to the change, and report actual results and material limitations.
+4. Before the final response, update `docs/PROJECT_STATUS.md` for meaningful changes: behavior/decisions, affected areas, checks actually run, remaining issues, and a concrete next step when needed. Use a dated, concise entry and keep the latest five task entries. Record unsuccessful or skipped verification honestly.
+5. Update this file only when durable requirements, architecture or workflow change. Update README/API/verification documentation when their claims change. Keep the two agent entry-point files thin.
+6. Documentation-only work does not require an executable rebuild, app version bump or release. Never claim that written instructions automatically enforce another agent's behavior.
+
+## Product requirements
+
+- A local AI coding orchestrator with an optional lead agent and optional independent reviewers. Do not require two agents, a lead, or a reviewer. At least one participant is needed to run a request.
+- The lead implements requested changes and checks. Reviewers inspect and give opinions without editing. For implemented work with confirmed in-scope mistakes, there is one bounded correction pass and read-only rechecks, then discussion and an attributed final report. Analysis requests must not silently turn into implementation.
+- Preserve conversation context and drafts. Show the user's current request, each agent's progress, retained working notes and distinct final results. Progress must correspond to observed events, not invented activity.
+- English is the default UI language; Korean is supported. Preserve IME composition, Enter-to-send, Shift+Enter, focus changes and draft persistence.
+- Design and performance both matter: readable compact typography, coherent spacing, light/dark contrast, responsive layouts, in-window dialogs and stable scrolling over Markdown tables. Verify visual changes instead of relying only on compilation.
+- Users select the project and optional read-only reference folders. File links must resolve safely and open at the correct line. Bound large-file rendering.
+- Respect the selected execution permission policy. New-install full access and imported user settings are intentional. Review-only intent is not filesystem isolation when full access is enabled; do not claim otherwise.
+- Keep six current CLI adapters reliable before adding many new agents. Never weaken validation or change the selected policy merely to make a test pass.
+
+## Architecture and source map
+
+- **Tauri 2 + React/TypeScript + Rust**. No Python/Electron runtime; Node.js is for development/builds.
+- `src/App.tsx`, `src/style.css`: shell, composition, conversation, split panes, agent settings and notes.
+- `src/usage-panel.tsx`, `src/quotas.ts`: quota UI and summaries; `src/file-preview.tsx`, `src/links.ts`: file navigation.
+- `src/api.ts`, `src/types.ts`: frontend runtime interface and shared shapes.
+- `src-tauri/src/main.rs`: native commands and executable entry points.
+- `engine.rs`: lead/review/correction/discussion/report orchestration; `process.rs`: CLI resolution, arguments, streamed events, usage parsing and Windows child-process jobs.
+- `quota.rs`: provider usage probes and normalization; `files.rs`: bounded, read-only project/reference previews.
+- `server.rs`: authenticated loopback HTTP/SSE runtime; `store.rs`: SQLite persistence and migration; `updates.rs`: manual GitHub update checks and installation.
+- `docs/runtime-api.md`, `docs/openapi.json`: runtime contract. `scripts/generate-contract.mjs` generates the spec; edit the generator and regenerate the JSON together.
+- `vite.config.ts`: same-origin local browser bridge to the real engine. Source `index.html` opened with `file://` shows launch instructions, not the working app.
+
+## Fast development and scoped verification
+
+Run commands from the repository root. Install dependencies with `npm ci` when needed.
+
+| Change / purpose | Commands and evidence |
+| --- | --- |
+| Native development | `npm run tauri dev` — use the debug profile, not a release build for every edit |
+| Browser UI iteration | Build the debug engine once with `cargo build --locked --manifest-path src-tauri/Cargo.toml`, then `npm run dev`; open `http://127.0.0.1:1420` |
+| Frontend behavior/types | `npm test`, `npm run build` as appropriate |
+| Rust behavior | `cargo test --locked --manifest-path src-tauri/Cargo.toml` |
+| Runtime / adapter / persistence changes | Rebuild the debug executable, then `node tests/runtime.mjs` |
+| UI interactions / input / scrolling / file navigation | `node tests/ui.mjs` — isolated real runtime + native fixtures, installed Edge and a free port 1420 required |
+| Rust formatting | `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` |
+| Shipping artifact | `npm run tauri build -- --no-bundle`, then `node tests/runtime.mjs src-tauri/target/release/AgentCouncil.exe` and relevant native UI checks |
+| Documentation-only | Review links, source accuracy and `git diff --check`; do not rebuild the app just to edit instructions |
+
+Select checks based on the behavior at risk. After they pass, repeat/broaden only for new changes, failures or unresolved concerns. Fixtures prove orchestration/adapter handling, not that every provider's real coding or review succeeds. Label fixture, live-account and native visual evidence separately. Live model calls can consume the user's quota; do not run broad provider sweeps unnecessarily.
+
+## Runtime lifecycle and test isolation
+
+- The same executable starts a separate `--serve` process. Closing a window leaves accepted work running. A new GUI can reconnect to an older process with the same app version/compatibility revision.
+- Recompiling the GUI does **not** prove the running background engine was replaced. For backend verification use a fresh isolated data directory or restart only your own idle test runtime. Check descriptor version/revision, PID and executable path. Never kill a user's active job or broadly terminate all agent processes.
+- `AGENT_COUNCIL_DATA` selects isolated runtime data. Production data is under `%LOCALAPPDATA%\AgentCouncil`; keep it intact. `runtime.json` contains a bearer token and must not be printed or committed.
+- Existing integration tests isolate auth with `AGENT_COUNCIL_AUTH_HOME`, `CLAUDE_CONFIG_DIR` and `GROK_HOME`, and use fixture CLIs on a private PATH. Reuse those harnesses. Do not mistake fixtures for a real sign-in or quota.
+- `.runtime-test/`, `node_modules/`, `web-dist/`, `src-tauri/target/` and `dist/` are generated/private artifacts. Verify resolved ownership/path boundaries before recursive cleanup.
+- Runtime access stays authenticated and loopback-only. Mobile, Tailscale exposure and pairing require explicit implementation; an HTTP interface alone does not provide remote access.
+
+## Quota and credential correctness
+
+- Account quota percentages and project token totals are different measurements. Never substitute tokens for a percentage or represent missing data as zero.
+- Preserve each period/model bucket, units, reset time, source and freshness. The footer summarizes the highest reported percentage with its period; the panel shows all windows.
+- Classify Codex periods by duration, including older one-minute drift. Merge partial Claude events without erasing other windows; reject stale lower same-period snapshots. Skip disabled/unmetered Antigravity buckets. Preserve last-known data as explicitly stale on refresh failure.
+- Cursor IDE quota access is separate from Cursor Agent CLI authentication. Other provider endpoints/auth formats can change: verify against current primary sources and sanitized responses.
+- Reuse existing sign-ins only for their matching provider. Never print, commit, return to the UI, or send to unrelated services any credential, cookie, refresh token, provider auth database or runtime bearer token. Do not automate sign-in or change Windows trust/security settings as a shortcut.
+- Preserve [third-party acknowledgments](docs/THIRD_PARTY_NOTICES.md) and Orca's MIT notice when using its implementation as a reference. Do not infer that this grants a license to Agent Council's own code.
+
+## Build, signing and publishing
+
+- Read [docs/BUILD_AND_SIGNING.md](docs/BUILD_AND_SIGNING.md). Development and ordinary CI are unsigned; trusted code signing belongs to an explicitly requested/authorized release.
+- Existing `.github/workflows/check.yml` runs checks on pushes/PRs and already uses `Swatinem/rust-cache`. It is **not** a signed release workflow.
+- Do not bump versions, run repeated optimized/LTO builds, package ZIPs or publish a release for routine edits. Use frontend hot reload and incremental debug builds during iteration.
+- A future release workflow should be triggered by release tags or explicit dispatch, build from the exact source revision, verify/sign the executable, package the signed bytes, then publish. Signing-provider approval can require a person; do not promise unattended completion.
+- A shipping version must agree in `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and `src-tauri/tauri.conf.json`. Do not ship a stale executable left in `dist/`.
+- Verify the actual uploaded assets/digests and release status before reporting publication. Keep a failed or pending signing/release step visible; never call an unsigned artifact signed.
+
+## Communication
+
+Respond in the user's language. Explain what changed, why, how it was checked and what remains uncertain. Do not claim perfect provider support, fully eliminated Windows warnings, completed mobile pairing or signing approval without evidence. If interrupted, leave a compact, truthful continuation point in `docs/PROJECT_STATUS.md`.
