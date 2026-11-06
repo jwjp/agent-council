@@ -67,6 +67,7 @@ function CompanionApp() {
   const [code, setCode] = useState(initialCode),
     [name, setName] = useState("My phone"),
     [error, setError] = useState("");
+  const [pairing, setPairing] = useState(false);
   const [text, setText] = useState(""),
     [sending, setSending] = useState(false),
     [online, setOnline] = useState(false),
@@ -480,13 +481,16 @@ function CompanionApp() {
                 className="pair-form"
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (pairing) return;
+                  setPairing(true);
                   setError("");
                   void pair(code, name)
                     .then(() => {
                       setCode("");
                       setPhase("pending");
                     })
-                    .catch(handleError);
+                    .catch(handleError)
+                    .finally(() => setPairing(false));
                 }}
               >
                 <label>
@@ -505,6 +509,7 @@ function CompanionApp() {
                     <input
                       aria-label="Pairing link"
                       type="url"
+                      maxLength={4096}
                       autoCapitalize="none"
                       autoCorrect="off"
                       autoComplete="off"
@@ -523,9 +528,15 @@ function CompanionApp() {
                     )}
                   </p>
                 ) : (
-                  <button className="phone-primary" type="submit">
+                  <button
+                    className="phone-primary"
+                    type="submit"
+                    disabled={pairing}
+                  >
                     <LinkIcon />
-                    {t("Request connection", "연결 요청")}
+                    {pairing
+                      ? t("Requesting…", "연결 요청 중…")
+                      : t("Request connection", "연결 요청")}
                   </button>
                 )}
               </form>

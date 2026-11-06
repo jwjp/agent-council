@@ -21,6 +21,8 @@
   "bundle": {
     "active": true,
     "iOS": {
+      "bundleVersion": "1",
+      "infoPlist": "Info.plist",
       "minimumSystemVersion": "15.0"
     }
   }

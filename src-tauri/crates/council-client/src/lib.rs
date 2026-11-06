@@ -315,27 +315,26 @@ impl Client {
                 self.pending = None;
             }
         }
+        let mut next = self.clone();
         if response.status().is_success() {
-            self.absorb(&response)?;
+            next.absorb(&response)?;
         }
         let value = Self::body(response).await?;
         if path == "/pair/complete" && value["status"] != "pending" {
-            if self.device.is_none() || value["protocol"] != "companion-v1" {
-                self.device = None;
+            if next.device.is_none() || value["protocol"] != "companion-v1" {
                 return Err(error(502, "Host pairing response was incomplete."));
             }
             match value["expires"].as_i64().filter(|e| *e > 0) {
-                Some(expires) => self.expires = expires,
+                Some(expires) => next.expires = expires,
                 None => {
-                    self.device = None;
-                    self.expires = 0;
                     return Err(error(502, "Device expiry was missing."));
                 }
             }
         }
         if path == "/logout" {
-            self.forget();
+            next.forget();
         }
+        *self = next;
         Ok(value)
     }
     pub async fn events(&self, after: i64) -> Result<Response> {

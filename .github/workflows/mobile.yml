@@ -6,6 +6,16 @@ on:
     paths: ["mobile/**", "src/companion*", "src-tauri/crates/council-client/**", "vite.mobile.config.ts", ".github/workflows/mobile.yml"]
   workflow_dispatch:
 jobs:
+  frontend:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:mobile
+      - run: node tests/native-companion-ui.mjs
   ios-simulator:
     runs-on: macos-latest
     timeout-minutes: 45
@@ -18,7 +28,9 @@ jobs:
           targets: aarch64-apple-ios-sim,x86_64-apple-ios
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
-        with: { workspaces: "mobile/src-tauri" }
+        with:
+          workspaces: "mobile/src-tauri"
+          cache-on-failure: true
       - run: npm ci
       - run: npm test
       - run: npm run build:mobile

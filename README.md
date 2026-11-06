@@ -35,7 +35,7 @@ The Rust engine exposes an authenticated, versioned HTTP/SSE interface on an eph
 
 The [**3.2.0-beta.2 Windows preview**](https://github.com/jwjp/agent-council/releases/tag/v3.2.0-beta.2) includes **App menu → Connect a phone**: an opt-in gateway with expiring QR invitations, host approval, revocable devices and a responsive browser client. Phones can continue an approved project's conversation, inspect per-agent results/progress/files/usage and cancel their own requests. Full-access agents still run with host permissions; project routing does not create an OS sandbox. [Setup and verification limits](docs/MOBILE_COMPANION.md). Use the preview ZIP directly to update between betas; the stable updater does not select prereleases.
 
-Tailscale Serve HTTPS must be configured by the user, and a disabled tailnet may require account-owner web activation. The app does not publish any port automatically. Stable v3.1.0 has no companion UI; native iOS/Android binaries and background push are not implemented.
+Tailscale Serve HTTPS must be configured by the user, and a disabled tailnet may require account-owner web activation. The app does not publish any port automatically. Stable v3.1.0 has no companion UI; native mobile distribution and background push are not available. The separate [iPhone-first native shell](docs/NATIVE_COMPANION.md) is under simulator validation; it does not change the published desktop preview.
 
 ## Develop and verify
 
