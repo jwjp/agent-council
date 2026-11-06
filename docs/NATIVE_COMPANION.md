@@ -28,8 +28,8 @@ node scripts/check-mobile-boundary.mjs
 On macOS with Xcode and XcodeGen, from `mobile/`:
 
 ```sh
-node ../node_modules/@tauri-apps/cli/tauri.js ios init --ci
-node ../node_modules/@tauri-apps/cli/tauri.js ios build --debug --target aarch64-sim --no-sign --ci
+npm run tauri -- ios init --ci
+npm run tauri -- ios build --debug --target aarch64-sim --no-sign --ci
 ```
 
 Intel runners use `--target x86_64`. The generated Xcode project is ignored; packaged web assets must be rebuilt first. `.github/workflows/mobile.yml` performs an unsigned simulator build and native launch/screenshot without developer-account credentials. A desktop compile checks Rust/IPC shapes, not the Swift/Kotlin runtime. Simulator artifacts cannot be installed on an iPhone.

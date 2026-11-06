@@ -24,7 +24,13 @@
 body {
   margin: 0;
 }
-.pair-recovery { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 20px; }
+.pair-recovery {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+}
 button,
 input,
 textarea {
