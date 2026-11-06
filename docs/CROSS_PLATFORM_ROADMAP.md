@@ -16,7 +16,7 @@ A host owns its projects, local CLI sign-ins, quotas, SQLite history and jobs. A
 
 ## Architecture direction
 
-The portable host/shared types and browser companion are now implemented. The design below explains that direction and the remaining native-client work; the implemented browser contract is in [COMPANION_API.md](COMPANION_API.md).
+The portable host/shared types and browser companion are now implemented. The [separate native companion](NATIVE_COMPANION.md) now has a shared Rust remote client, native vault glue and an iPhone-first simulator pipeline; native distribution remains separate. The design below explains that direction and the remaining native-client work; the implemented browser contract is in [COMPANION_API.md](COMPANION_API.md).
 
 - A small shared Rust domain/protocol crate for typed data and orchestration rules; a desktop-host crate for Axum/SSE, SQLite, CLI subprocesses, filesystem access and usage probes; thin desktop and mobile shells. Keep desktop-only dependencies out of the mobile dependency graph. Refactor incrementally with existing tests rather than rewrite the engine wholesale.
 - Share React message/Markdown/file-preview/usage components, types and a host-aware transport. Separate local desktop bootstrap from paired remote bootstrap. Current `src/api.ts` unconditionally invokes desktop `bootstrap` whenever it is in Tauri, so it cannot serve as the mobile connection path unchanged.
@@ -27,7 +27,7 @@ The portable host/shared types and browser companion are now implemented. The de
 
 Use Tailscale as the first network transport, with the host service still bound to loopback behind a deliberate HTTPS gateway/proxy. Tailscale Serve can proxy a local service privately within the tailnet and enforce tailnet access controls. It is distinct from public Funnel. Do not configure either during a planning task. [Official Serve documentation](https://tailscale.com/docs/features/tailscale-serve).
 
-Tailscale network membership must not substitute for application authorization. The browser preview implements explicit host approval and a short-lived, single-use QR pairing challenge, separate revocable HttpOnly device cookies, and scoped project/action routing. Keep the existing local runtime bearer and provider secrets private to the host. Never put reusable tokens in URLs or share the local descriptor with the phone. The gateway does not forward local maintenance/update/settings privileges. Secure native credential transport/storage still needs implementation before shipping native clients.
+Tailscale network membership must not substitute for application authorization. The browser preview implements explicit host approval and a short-lived, single-use QR pairing challenge, separate revocable HttpOnly device cookies, and scoped project/action routing. Keep the existing local runtime bearer and provider secrets private to the host. Never put reusable tokens in URLs or share the local descriptor with the phone. The gateway does not forward local maintenance/update/settings privileges. Native credential transport/storage is implemented in the separate phone workspace and requires simulator/physical-device evidence before native distribution.
 
 The browser preview reuses durable SSE event IDs/replay, foreground snapshots and idempotent commands, with a `companion-v1` protocol identifier and its own [companion contract](COMPANION_API.md). Keep the [local runtime contract](runtime-api.md) separate from remote authorization and maintain both specs/tests when interfaces change.
 
@@ -47,4 +47,4 @@ iOS builds require macOS and Xcode; Mac hardware or a macOS build runner and rea
 
 ## Evidence and next step
 
-The original assessment read current manifests, host modules, `src/api.ts` and runtime documentation. The subsequent portable-host implementation and its evidence are recorded in [PORTABLE_HOST.md](PORTABLE_HOST.md) and [PROJECT_STATUS.md](PROJECT_STATUS.md); do not treat the original assessment as runtime verification. Native Mac/provider validation and the paired remote vertical slice remain open.
+The original assessment read current manifests, host modules, `src/api.ts` and runtime documentation. The subsequent portable-host implementation and its evidence are recorded in [PORTABLE_HOST.md](PORTABLE_HOST.md) and [PROJECT_STATUS.md](PROJECT_STATUS.md); do not treat the original assessment as runtime verification. Native Mac/provider and physical-phone validation remain open; the paired browser vertical slice has fixture and host-side HTTPS evidence documented in the status file.

@@ -36,17 +36,17 @@ async fn load(app: &tauri::AppHandle, connection: &mut Connection) -> Result<(),
     if connection.loaded {
         return Ok(());
     }
-    if let Some(saved) = app.secure_link().load().map_err(failure)? {
+    if let Some(saved) = app.secure_link().load().await.map_err(failure)? {
         // Invalid/locked storage is surfaced, never silently replaced with plaintext.
         connection.client.restore(&saved)?;
     }
     connection.loaded = true;
     Ok(())
 }
-fn persist(app: &tauri::AppHandle, client: &Client) -> Result<(), Error> {
+async fn persist(app: &tauri::AppHandle, client: &Client) -> Result<(), Error> {
     match client.storage_record() {
-        Some(record) => app.secure_link().save(&record).map_err(failure),
-        None => app.secure_link().clear().map_err(failure),
+        Some(record) => app.secure_link().save(&record).await.map_err(failure),
+        None => app.secure_link().clear().await.map_err(failure),
     }
 }
 #[tauri::command]
@@ -62,7 +62,7 @@ async fn mobile_request(
     let before = c.client.storage_record();
     let result = c.client.request(&method, &path, body).await;
     if before != c.client.storage_record() {
-        if let Err(e) = persist(&app, &c.client) {
+        if let Err(e) = persist(&app, &c.client).await {
             c.client.forget();
             stop(&state);
             return Err(e);
@@ -85,7 +85,7 @@ async fn mobile_pair(
     let value = c.client.pair(&link, &name).await?;
     stop(&state);
     // Only an approved device is persisted. Pending approval lives in memory.
-    app.secure_link().clear().map_err(failure)?;
+    app.secure_link().clear().await.map_err(failure)?;
     Ok(value)
 }
 #[derive(Clone, Serialize)]
@@ -155,17 +155,17 @@ fn mobile_stop(state: State<'_, Mobile>, id: u64) {
 #[tauri::command]
 async fn mobile_forget(app: tauri::AppHandle, state: State<'_, Mobile>) -> Result<(), Error> {
     let mut c = state.connection.lock().await;
-    app.secure_link().clear().map_err(failure)?;
+    app.secure_link().clear().await.map_err(failure)?;
     c.client.forget();
     c.loaded = true;
     stop(&state);
     Ok(())
 }
 #[tauri::command]
-fn mobile_open_web(app: tauri::AppHandle, url: String) -> Result<(), Error> {
+async fn mobile_open_web(app: tauri::AppHandle, url: String) -> Result<(), Error> {
     // Enforce HTTPS again in Swift/Kotlin, and always use the system browser.
     let parsed = reqwest_url(&url)?;
-    app.secure_link().open_web(&parsed).map_err(failure)
+    app.secure_link().open_web(&parsed).await.map_err(failure)
 }
 fn reqwest_url(value: &str) -> Result<String, Error> {
     // Parsing via Tauri's URL type avoids shell/open commands on mobile.

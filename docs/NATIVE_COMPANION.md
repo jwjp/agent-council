@@ -40,6 +40,6 @@ Intel runners use `--target x86_64`. The generated Xcode project is ignored; pac
 
 Physical iPhone installation still requires Apple provisioning/signing; TestFlight/App Store distribution requires Apple Developer Program enrollment and App Store Connect setup. This repository has no Apple signing credentials or TestFlight upload configuration. Do not publish an unsigned simulator bundle as an iPhone download. Android native glue is present but Android builds/device validation are a later step.
 
-Until native distribution is prepared, the existing Safari HTTPS companion remains the usable iPhone route. No new Tailscale routes, account sign-ins or paid enrollments are configured by this work.
+Owner reported no Apple Developer Program membership on 2026-11-06. No paid enrollment is needed for the CI/simulator work. Until native distribution is prepared, the existing Safari HTTPS companion remains the usable iPhone route. No new Tailscale routes, account sign-ins or paid enrollments are configured by this work.
 
 References: [Tauri iOS signing](https://v2.tauri.app/distribute/sign/ios/), [mobile plugins](https://v2.tauri.app/develop/plugins/develop-mobile/).

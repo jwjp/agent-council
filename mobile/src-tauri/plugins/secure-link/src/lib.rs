@@ -24,11 +24,12 @@ pub struct SecureLink<R: Runtime> {
     _runtime: std::marker::PhantomData<fn() -> R>,
 }
 impl<R: Runtime> SecureLink<R> {
-    pub fn load(&self) -> Result<Option<String>, String> {
+    pub async fn load(&self) -> Result<Option<String>, String> {
         #[cfg(mobile)]
         {
             self.handle
-                .run_mobile_plugin::<Stored>("load", ())
+                .run_mobile_plugin_async::<Stored>("load", ())
+                .await
                 .map(|s| s.value)
                 .map_err(|_| {
                     "Cannot unlock the saved connection. Unlock this device and retry.".into()
@@ -39,11 +40,12 @@ impl<R: Runtime> SecureLink<R> {
             Err("Native secure storage requires iOS or Android.".into())
         }
     }
-    pub fn save(&self, value: &str) -> Result<(), String> {
+    pub async fn save(&self, value: &str) -> Result<(), String> {
         #[cfg(mobile)]
         {
             self.handle
-                .run_mobile_plugin::<serde_json::Value>("save", Save { value })
+                .run_mobile_plugin_async::<serde_json::Value>("save", Save { value })
+                .await
                 .map(|_| ())
                 .map_err(|_| "Could not securely save the connection.".into())
         }
@@ -53,11 +55,12 @@ impl<R: Runtime> SecureLink<R> {
             Err("Native secure storage requires iOS or Android.".into())
         }
     }
-    pub fn clear(&self) -> Result<(), String> {
+    pub async fn clear(&self) -> Result<(), String> {
         #[cfg(mobile)]
         {
             self.handle
-                .run_mobile_plugin::<serde_json::Value>("clear", ())
+                .run_mobile_plugin_async::<serde_json::Value>("clear", ())
+                .await
                 .map(|_| ())
                 .map_err(|_| "Could not remove the saved connection.".into())
         }
@@ -66,11 +69,15 @@ impl<R: Runtime> SecureLink<R> {
             Err("Native secure storage requires iOS or Android.".into())
         }
     }
-    pub fn open_web(&self, url: &str) -> Result<(), String> {
+    pub async fn open_web(&self, url: &str) -> Result<(), String> {
         #[cfg(mobile)]
         {
             self.handle
-                .run_mobile_plugin::<serde_json::Value>("openWeb", serde_json::json!({"url":url}))
+                .run_mobile_plugin_async::<serde_json::Value>(
+                    "openWeb",
+                    serde_json::json!({"url":url}),
+                )
+                .await
                 .map(|_| ())
                 .map_err(|_| "Cannot open the browser.".into())
         }
