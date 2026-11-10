@@ -31,6 +31,35 @@ The active test gateway is loopback `127.0.0.1:43129`, reached through a separat
 
 **Different ports do not isolate browser cookies.** On the same DNS name, pairing this test host in the existing regular Safari context can replace the production browser cookie. Use a separate **Private Browsing** session for the initial test. The owner reported successful iPhone access to the connection screen, then requested a retry because it had not been done privately. One completed test-device grant was revoked, no test jobs were running, and a fresh invitation will be issued only after the private tab is ready. If regular Safari was used for pairing, its original login may require re-pairing afterward; stored production device records/history being intact does not prove that the phone cookie stayed intact. [RFC 6265 §8.5](https://www.rfc-editor.org/rfc/rfc6265#section-8.5).
 
-Physical authenticated input, keyboard/IME, rotation, lock/restore, reconnection and Home Screen behavior are **not yet verified**. Continue with [the device checklist](IPHONE_DEVICE_CHECK.md). A Home Screen test must use a separate test icon/session and fresh pairing; Safari Private Browsing evidence alone is not Home Screen evidence. No real model requests or public release have been made during this handoff.
+On 2026-11-10 the owner confirmed Private Browsing readiness. The old invitation had expired; a fresh five-minute invitation was issued. The test GUI was reopened and the approval panel displayed, then the owner reported successful connection with the input field visible. The host confirmed one device, zero pending claims and no jobs/messages.
 
-After physical tests, restore/check the original regular Safari connection if needed, then run a small authorized real-provider workflow. Retain source/check evidence before preparing a new public preview. To clean up later, revoke the test device, disable its gateway and remove **only** the test route with `tailscale serve --https=8443 off`; preserve HTTPS 443. Stop only the owned idle test runtime/GUI. Do not broadly terminate agent processes or reset the whole Serve configuration.
+The owner subsequently reported **all five no-send physical Private Safari checks normal**:
+
+| Physical check | Owner-reported result |
+| --- | --- |
+| Korean final character after tapping Done | Preserved |
+| Switch to another app and return | Draft preserved |
+| Portrait/landscape rotation with keyboard | Composer and Send visible |
+| Lock and unlock with an unsent draft | Draft preserved |
+| Type while offline, reconnect, wait for host save and reload | Added text preserved |
+
+These results are owner-reported on a physical iPhone; model/iOS remain unknown. Composing-Return, hardware-keyboard shortcuts and physical revocation are not covered by these answers. Continue with [the device checklist](IPHONE_DEVICE_CHECK.md).
+
+The owner then added a separate **Council test** icon from the private-tab share menu and reported its composer visible. After waiting for host-save indication, closing only that Home Screen app through the app switcher and reopening its icon, the owner confirmed that **both connection and draft remained**. This is owner-reported physical Home Screen install/reopen evidence; it is separate from native Tauri/iPhone distribution, and does not establish Home Screen-specific keyboard/rotation/offline behavior or regular Safari's original production login.
+
+A later host read found a completed request at 2026-11-10 11:23 UTC (20:23 KST): one user message, a Codex work response and no subsequent review/discussion rounds. The host reported 22,144 input / 313 output project tokens and zero running jobs. The owner confirmed intentionally sending it; it was not reported as an accidental IME submission. The agent did not initiate it or remove the record. It is not a full coding/review workflow pass. No public release has been made during this handoff.
+
+## Bounded real-provider workflow — 2026-11-10
+
+Ran the same staged executable with a **new** isolated data/project directory, leaving the physical phone test host, selected team and draft unchanged. Used matching existing provider sign-ins: **Codex lead + Claude Code reviewer**, with the selected `all` permission policy retained. No fixture CLIs were substituted and no extra provider sweep was performed.
+
+The request was to implement a small dependency-free JavaScript port parser and Node tests, entirely inside the disposable project. Observed persisted events/messages established this sequence: Codex implementation → Claude review (`PASS`) → both agents' discussion (each result retained) → attributed council report → `done`. It ran from 20:32:27 to 20:34:46 KST, approximately 2 minutes 19 seconds, with no error events. No confirmed blocker was raised, so correction/recheck was not exercised in this live run; those paths retain separate fixture evidence.
+
+- Inspected actual `port.mjs` / `port.test.mjs` and the final report. Independently reran `node --test port.test.mjs`: **3 passed, 0 failed**. Only those two requested files were added; the initial README remained unchanged.
+- Both files' SHA-256 values matched the snapshot taken after implementation and the final snapshot. This is observed file stability, not enforced filesystem isolation for reviewers under full access.
+- CLI-reported project totals were Codex **160,774 input / 4,267 output tokens** and Claude **186,883 input / 2,835 output tokens**. These totals are not account quota percentages or a billable-cost calculation.
+- Private evidence is under `.runtime-test/live-workflow-1794310346293/`: `evidence.json`, `result.json`, `independent-tests.txt` and `project/`. The owned test host PID 32720 exited only after the workflow was idle. The separate phone/production hosts and Serve routes were not changed.
+
+This establishes one successful real-account Windows implementation/review/discussion/report workflow for two providers. It does not validate all six providers, native Mac/iPhone execution, a physical phone view of this separate workflow, or a new distributable release. No application source/version, executable bytes or published assets changed.
+
+Next: prepare the next public preview from the verified application source, retaining this evidence and rerunning artifact-specific checks on the actual shipping binary. Check/restore the original regular Safari connection if needed. To clean up the phone test later, revoke its test device, disable its gateway and remove **only** the test route with `tailscale serve --https=8443 off`; preserve HTTPS 443. Stop only the owned idle test runtime/GUI. Do not broadly terminate agent processes or reset the whole Serve configuration.
