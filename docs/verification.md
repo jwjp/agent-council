@@ -1,5 +1,11 @@
 # v3 migration verification
 
+## Beta.3 shipping candidate — 2026-11-10
+
+The authorized Windows preview packages the Home Screen/input recovery and keyboard/IME changes previously verified in source. Desktop/core/host versions are 3.2.0-beta.3; the native phone app keeps its independent 0.1.0-alpha.1 version, with only its shared-core lockfile entry updated. Runtime revision remains 4. Artifact-specific build/integration/native UI checks and publication are pending; do not treat the candidate as published until [PROJECT_STATUS.md](PROJECT_STATUS.md) records its verified release/digests.
+
+Before this release preparation, the owner reported physical iPhone Private Safari input/lifecycle/offline-recovery checks and Home Screen connection/draft retention after closing/reopening, using the isolated debug source build. A separate real-account Codex/Claude workflow completed implementation, review, both agents' discussion and an attributed report; generated Node tests independently passed 3/3. These are distinct from the optimized shipping artifact, six-provider coverage, native phone distribution and Mac GUI tests. [Exact local evidence](LOCAL_TEST_BUILD.md).
+
 ## Phone keyboard and composition — 2026-11-07, source only
 
 Source `2aba999` adds explicit composition guards to the shared phone composer, including flagless Enter/form-submit prevention and final DOM input capture on composition end or blur. A frame-coalesced visual-viewport hook follows unzoomed height/pan bounds, keeps pinch zoom available and removes listeners/pending frames on cleanup. Compact editing controls include keyboard dismissal; short landscape layout retains Usage/Disconnect.

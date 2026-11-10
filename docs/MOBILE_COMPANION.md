@@ -1,6 +1,6 @@
 # Mobile web companion preview
 
-Source version: **3.2.0-beta.2**, runtime revision **4**. This is a browser companion for a Windows/macOS execution host, not an iOS/Android native app. The gateway is off by default. See project status for the actual preview release and verification state.
+Source version: **3.2.0-beta.3**, runtime revision **4**. This is a browser companion for a Windows/macOS execution host, not an iOS/Android native app. The gateway is off by default. See project status for the actual preview release and verification state.
 
 ## Connect a phone
 
@@ -30,7 +30,7 @@ Changing the configured HTTPS origin revokes existing devices. Disabling/re-enab
 
 ## iPhone Home Screen — current source
 
-These improvements are in source after beta.2; the published beta.2 EXE/ZIP has not changed. Rebuild the frontend and host together to try them.
+These improvements are included in beta.3; the older beta.2 EXE/ZIP has not changed. When building from source, rebuild the frontend and host together.
 
 Open the paired page in Safari, then choose **Share → Add to Home Screen** (Safari may put Share under More). Enable **Open as Web App** if shown, then open the new Council icon. The page's **Add to Home Screen** button explains these steps in English or Korean. See [Apple's instructions](https://support.apple.com/guide/iphone/open-as-web-app-iphea86e5236/ios).
 
@@ -41,6 +41,8 @@ Unsynced browser input and an ambiguous submission's request ID have a temporary
 Returning to the foreground or reconnecting reloads host state before streaming. Delayed saves/snapshots cannot overwrite newer typing; an uncertain submission is checked against the device-scoped request ID, without automatically submitting another job. Clearing browser data, closing a tab or OS storage eviction can lose unsynced input. There is no service worker, offline cold launch, cached private history or background notification delivery. Keep the PC awake and both devices reachable through Tailscale.
 
 The current composer also tracks explicit IME composition, commits the final input value on composition end/focus loss and follows unzoomed visual-viewport bounds when the keyboard opens. In a small editing area it keeps typing/Send visible and offers **Done** to dismiss the keyboard. Compact controls restore when space returns; pinch zoom is not disabled. Automated tests simulate these bounds; use the [physical iPhone checklist](IPHONE_DEVICE_CHECK.md) to establish actual Safari/Home Screen keyboard and app-switch behavior.
+
+On 2026-11-10 the owner reported physical Private Safari passes for Korean final-character preservation/Done, app-switch draft retention, keyboard/rotation visibility, lock/unlock and offline edits surviving reconnect/save/reload. A separate Home Screen test icon retained connection and the saved draft after closing/reopening the app. Model/iOS were not recorded; Home Screen-specific keyboard/offline and native physical-device behavior remain separate checks. See [the bounded evidence](LOCAL_TEST_BUILD.md).
 
 ## Development and verification
 
