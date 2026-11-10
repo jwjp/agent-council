@@ -17,6 +17,7 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm test
+      - run: node tests/ios-screen-check.mjs
       - run: npm run build:mobile
       - run: node tests/native-companion-ui.mjs
       - run: node tests/native-companion-ui.mjs --dev

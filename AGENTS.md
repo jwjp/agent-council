@@ -34,6 +34,7 @@ This is the canonical project instruction file. `CLAUDE.md` and `GEMINI.md` poin
 - `src-tauri/crates/council-core`: shared wire types/version; no GUI, database, subprocess or provider dependencies.
 - `src-tauri/crates/council-client`: GUI-free HTTPS companion client; cookies remain native-only. `mobile/src-tauri` is a separate Tauri phone workspace, with no execution host/CLI/database. Read [native companion instructions](docs/NATIVE_COMPANION.md); iPhone is the first validation target. Keep mobile vault commands inaccessible to frontend plugins.
 - Mobile has an independent version/lockfile. Do not bump the desktop version for phone-only work. Keep browser, mocked native IPC, simulator/Keychain and physical-device/signing evidence distinct; a simulator bundle is not an installable iPhone release.
+- A native simulator process launch alone is not rendered-UI proof. Keep the pairing-screen screenshot/OCR gate and inspect its actual artifact; blank or loading captures must not be reported as a passing native screen.
 - `src-tauri/crates/council-host`: GUI-independent desktop execution library and `CouncilHost` executable. The module names below are relative to its `src/` directory. Keep the host free of Tauri/rfd/wry dependencies; `node scripts/check-host-boundary.mjs` enforces this boundary.
 - `engine.rs`: lead/review/correction/discussion/report orchestration; `process.rs`: CLI resolution, arguments, streamed events, usage parsing, Windows jobs and Unix process groups. `platform.rs` owns native data/auth paths and CLI search locations.
 - `quota.rs`: provider usage probes and normalization; `files.rs`: bounded, read-only project/reference previews.
@@ -55,6 +56,7 @@ Run commands from the repository root. Install dependencies with `npm ci` when n
 | Frontend behavior/types | `npm test`, `npm run build` as appropriate |
 | Rust behavior | `cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml` (the root GUI executable has no unit tests) |
 | Runtime / adapter / persistence changes | Rebuild the debug executable, then `node tests/runtime.mjs` |
+| Cross-version upgrade compatibility | `node tests/upgrade.mjs OLD_EXE NEW_EXE` — explicit existing binaries, separate temporary data/auth and fixture CLIs; no production profile or Tailscale changes |
 | UI interactions / input / scrolling / file navigation | `node tests/ui.mjs` — isolated real runtime + native fixtures, installed Edge and a free port 1420 required |
 | Rust formatting | `cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check` |
 | Shipping artifact | `npm run tauri build -- --no-bundle`, then `node tests/runtime.mjs src-tauri/target/release/AgentCouncil.exe` and relevant native UI checks |

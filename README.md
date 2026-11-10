@@ -72,3 +72,5 @@ npm run tauri build
 ```
 
 The runtime and browser integration tests use isolated data directories and deterministic native Rust CLI fixtures, not paid model calls. They check authentication, input validation, duplicate requests, lead/review/correction/recheck/conference/report ordering, token accounting, replay, descendant cancellation, persistence, distinct button actions, input preservation, Markdown table scrolling and compact layouts. Browser tests require installed Microsoft Edge and a free port 1420. Live agent/provider behavior requires separately signed-in CLIs.
+
+For a cross-version upgrade rehearsal, provide two existing executable paths explicitly: `node tests/upgrade.mjs OLD_EXE NEW_EXE`. It creates a fresh temporary profile with native fixtures and checks busy-host refusal, idle replacement, retained settings/history/drafts/device cookies, unchanged observer permissions and duplicate-request protection. It does not touch the production profile, existing provider sign-ins or Tailscale. [Recorded upgrade evidence](docs/verification.md#cross-version-upgrade--2026-11-10).

@@ -1,5 +1,22 @@
 # v3 migration verification
 
+## Cross-version upgrade — 2026-11-10
+
+Added `tests/upgrade.mjs`, a manual two-binary regression harness. Both paths are required; it never defaults to a production profile or downloads an executable. It reuses the native Rust fixture and private data/auth/PATH conventions, allocates only a loopback companion listener and checks temporary-root ownership before cleanup. No tailnet configuration or real model call is involved.
+
+Ran `node tests/upgrade.mjs dist/preview-3.2.0-beta.2/AgentCouncil.exe dist/preview-3.2.0-beta.3-verified/AgentCouncil.exe` successfully, then repeated after tightening owned-process cleanup. These are the actual stored beta.2/beta.3 Windows release binaries, not a rewritten descriptor pretending to be an older version. Confirmed:
+
+- The newer bootstrap refuses to replace a busy older engine; the old PID and running job remain. After canceling only that fixture job, idle replacement changes version/PID while retaining revision 4.
+- Settings, selected full-access policy, references, history, token totals, job records, durable cursor and the separate desktop draft survive. The existing work/observer cookies still authenticate and their phone draft is retained.
+- Observer submission remains forbidden. Pending invitations from the previous process expire. Repeating an already accepted phone request returns its original ID without adding messages or starting work.
+- Reopening the same new version reuses its existing host, and the upgraded companion serves fixed Home Screen launch metadata.
+
+Separately inspected the owner's actual production runtime: beta.3 from its Downloads directory, revision 4, no running jobs, 96 current-project messages and two stored devices initially. The owner reported a connection screen after reopening Safari; this does not establish that upgrade deleted credentials, given the earlier private/cross-port tests. Reopened the production GUI onto its existing engine, prepared its phone panel and issued a fresh expiring invitation only after phone readiness. The owner manually approved the new phone and reported prior conversation/composer visible in **ordinary Safari on the production HTTPS origin**. A subsequent host read showed three devices, zero pending claims, the same 96 messages and no jobs. Existing device records were retained; no host approval was automated. Raw invitation/cookie/runtime credentials are not recorded here. This is physical browser reconnection evidence, not a production Home Screen or native-app test.
+
+Follow-up native CI run `42810500186` attempt 1 failed its simulator launch command with `xcrun simctl launch` timing out after about two minutes; the build and three Keychain tests had passed. Earlier identical native inputs passed in `42809776966`. One unchanged failed-job rerun (attempt 2) completed build/install/launch and three Keychain tests successfully, but inspecting its actual screenshot revealed a **blank white screen**. That is process/Keychain evidence, **not a passing rendered native UI**. The previous smoke test's fixed six-second capture and PID-only criterion were insufficient.
+
+Strengthened simulator smoke verification with bounded screenshot polling and a CI-only Swift/Vision OCR helper requiring the actual pairing heading and both form labels. Local negative/positive controls reject blank/status/loading/incomplete text and accept a rendered form; the JavaScript harness syntax check passed. Hosted compilation/OCR/render verification is pending. The published Windows artifacts are unchanged and their exact-source Windows/macOS checks remain passed; no native phone app release, UI permission change or relaxed launch timeout is involved.
+
 ## Published beta.3 — 2026-11-10
 
 The [unsigned Windows preview](https://github.com/jwjp/agent-council/releases/tag/v3.2.0-beta.3) packages the Home Screen/input recovery and keyboard/IME changes previously verified in source. Exact source/tag is `ae7952b945d78a204c5d5fd304e3df5eb8e3a9b6`. Desktop/core/host versions are 3.2.0-beta.3; the native phone app keeps its independent 0.1.0-alpha.1 version, with only its shared-core lockfile entry updated. Runtime revision remains 4.

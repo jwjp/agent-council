@@ -1,6 +1,7 @@
 // Native simulator launch evidence; never claim physical-device or signed distribution.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { hasPairingScreen } from "./ios-screen-check.mjs";
 const run = (command, args, timeout = 120000) =>
   execFileSync(command, args, {
     encoding: "utf8",
@@ -54,16 +55,64 @@ const output = run("xcrun", [
   "dev.agentcouncil.companion",
 ]);
 console.log("Launched:", output);
-await new Promise((r) => setTimeout(r, 6000));
 run("xcrun", [
-  "simctl",
-  "io",
-  device.udid,
-  "screenshot",
-  ".runtime-test/ios-pairing.png",
+  "swiftc",
+  "scripts/ios-screen-text.swift",
+  "-o",
+  ".runtime-test/ios-screen-text",
 ]);
+const screenshot = ".runtime-test/ios-pairing.png";
+const deadline = Date.now() + 90000;
+let ready = false;
+do {
+  run("xcrun", ["simctl", "io", device.udid, "screenshot", screenshot]);
+  const lines = JSON.parse(
+    run(".runtime-test/ios-screen-text", [screenshot], 30000),
+  );
+  writeFileSync(
+    ".runtime-test/ios-screen-text.json",
+    JSON.stringify(lines, null, 2),
+  );
+  ready = hasPairingScreen(lines);
+  console.log("Pairing screen visible:", ready);
+  if (!ready) await new Promise((r) => setTimeout(r, 2000));
+} while (!ready && Date.now() < deadline);
+if (!ready) {
+  try {
+    writeFileSync(
+      ".runtime-test/ios-runtime.log",
+      run(
+        "xcrun",
+        [
+          "simctl",
+          "spawn",
+          device.udid,
+          "log",
+          "show",
+          "--last",
+          "3m",
+          "--style",
+          "compact",
+          "--predicate",
+          'process == "Council Companion" OR eventMessage CONTAINS "dev.agentcouncil.companion"',
+        ],
+        30000,
+      ),
+    );
+  } catch {
+    writeFileSync(
+      ".runtime-test/ios-runtime.log",
+      "Simulator diagnostics unavailable.",
+    );
+  }
+  throw Error(
+    "Native pairing screen did not render; inspect screenshot/OCR/runtime diagnostics",
+  );
+}
 writeFileSync(
   ".runtime-test/ios-launch.txt",
   `Simulator: ${device.name}\n${output}\nPackaged app: ${app}\nNo distribution signing or physical device verification.\n`,
 );
-console.log("PASS simulator installed and launched; inspect ios-pairing.png");
+console.log(
+  "PASS simulator installed, launched and rendered the pairing form; inspect ios-pairing.png",
+);
