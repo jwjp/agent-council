@@ -497,7 +497,7 @@ export default function App() {
           <div className="brand">
             <span className="brand-icon">≋</span>
             <span>Agent Council</span>
-            <span className="version">{state?.version || "3.0"}</span>
+            <span className="version">{state?.version || "—"}</span>
           </div>
           <div className="app-menu">
             <button
@@ -1285,6 +1285,7 @@ export default function App() {
             key={modal}
             onlyAgents={modal === "team"}
             initial={state.settings}
+            version={state.version}
             detected={state.agents}
             save={saveSettings}
             close={closeModal}
@@ -1645,6 +1646,7 @@ function AgentPane({
 }
 function SettingsModal({
   initial,
+  version,
   onlyAgents = false,
   detected,
   save,
@@ -1652,6 +1654,7 @@ function SettingsModal({
   t,
 }: {
   initial: Settings;
+  version: string;
   onlyAgents?: boolean;
   detected: Snapshot["agents"];
   save: (s: Settings) => Promise<void>;
@@ -1709,7 +1712,7 @@ function SettingsModal({
               );
             })}
             <div className="settings-nav-bottom">
-              v3.0.0
+              v{version}
               <br />
               Tauri · React · Rust
             </div>

@@ -149,6 +149,9 @@ try {
   await expect(
     page.getByRole("dialog", { name: "Settings", exact: true }),
   ).toBeVisible();
+  await expect(page.locator(".settings-nav-bottom")).toContainText(
+    `v${(await req("/state")).version}`,
+  );
   await expect(
     page.getByRole("heading", { name: "Project folder", exact: true }),
   ).toBeVisible();
