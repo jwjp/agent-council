@@ -24,7 +24,7 @@ No elapsed-time guarantee is established for provider review or hosted builds. S
 
 ## Provider readiness — last checked 2026-11-06
 
-Microsoft Store MSIX is a separate candidate distribution channel: Microsoft provides package signing after certification, so an external certificate is not required for that channel. Store-listed MSI/EXE installers still need publisher signing. See [Store distribution assessment](STORE_DISTRIBUTION.md) for the current compatibility gaps and trial plan. No MSIX build, channel-specific updater or Store submission is implemented; this does not change the unsigned GitHub release status.
+Microsoft Store MSIX is a separate candidate distribution channel. Microsoft provides package signing after certification. Store-listed MSI/EXE installers still need publisher signing. The unsigned Windows compatibility trial built and installed two packages using the beta.3 executable. Store identity, a channel-specific updater and submission remain open. See [Store distribution and trial evidence](STORE_DISTRIBUTION.md).
 
 - **SignPath Foundation:** free for qualifying projects, subject to review of license, reputation and verifiable source-to-binary provenance. Requires a signing policy, team roles/approvers, MFA and appropriate privacy information. Its terms require manual approval for each release. No application or approval is recorded for this project.
 - **OSSign:** official site currently says new applications are suspended and requires at least six months of activity on the account, organization and project. Recheck when considering it; do not assume the suspension or eligibility conditions remain unchanged.

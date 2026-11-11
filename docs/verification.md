@@ -1,5 +1,20 @@
 # v3 migration verification
 
+## Windows MSIX compatibility trial — 2026-11-11
+
+Built two unsigned x64 MSIX packages around the actual verified beta.3 Windows EXE. Both carry the trial-only identity and a thin launcher for isolated package-local runtime/auth/WebView2 data. The installed GUI and host were checked with `GetPackageFullName`. The non-elevated local Windows 11 test was rejected at deployment with `0x80073D2B`; it registered no trial package. [Microsoft unsigned MSIX deployment](https://learn.microsoft.com/en-us/windows/msix/package/unsigned-package).
+
+Source `49b327e376379dab684603a20a68f00a41fef2f6` [passed the elevated Windows Server 2025 trial](https://github.com/jwjp/agent-council/actions/runs/42971839499): AppsFolder activation, six CLI fixtures, external project and reference reads, fixture project writes, job continuity during GUI close/reopen, CLI process-tree cancellation, idle update retaining project/draft/history/job and package removal preserving the external project.
+
+Downloaded [artifact 13834045526](https://github.com/jwjp/agent-council/actions/runs/42971839499/artifacts/13834045526) and checked both manifests, block maps and absence of a package signature. Both EXE payloads match beta.3 SHA-256 `ba43dfc42299d13458d16a20bdcea5fee04ca768f45169a13ce207a119f1b51d`.
+
+| Hosted package | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `0.0.1.0` | 7,099,971 | `0eb079c2a525fc57112dc2c4d93a4f55015344625e33986f8227683d718cbc08` |
+| `0.0.2.0` | 7,099,968 | `5a703e02e21e03aa8b7ebbcac01366a30dcaf6d30ea10ef289c31e1cc637bfe6` |
+
+The two package versions use identical app bytes. The test used fixture CLIs and an isolated auth profile. Existing Windows provider accounts, upgrade/removal during active work, Store identity/signing/servicing and clean-machine WebView2 prerequisites remain unverified. [Store trial and reproduction](STORE_DISTRIBUTION.md#compatibility-trial-results).
+
 ## Android native companion — 2026-11-11
 
 Source `8f7ade10c2e61ae693fb83f30d7c519b400661b4` [passed Android-only CI](https://github.com/jwjp/agent-council/actions/runs/42943571897). The initial run `42943158796` failed before compilation because the runner's `sdkmanager` was outside PATH. The successful run uses the Android SDK's installed command-line tools path.
