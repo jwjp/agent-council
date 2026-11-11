@@ -1,5 +1,12 @@
 # v3 migration verification
 
+## Windows package state and updates — 2026-11-11
+
+Source `7b63515ab79ed869b04a74cf66eaea0ddb5f45f3` moved packaged runtime and WebView2 defaults into package-family `LocalState`. The host returns the Windows package update response directly and guards the portable updater. The Store UI command opens a fixed Microsoft Store URI. Partner Center was not inspected because the browser session could not validate the active URL.
+
+- Local embedded debug build, 33 Rust tests, 22 frontend tests, host dependency boundary and 22 desktop browser checks passed. The update dialog check used a mocked package response; inspected `.runtime-test/msix-update-dialog.png`. The first local UI run timed out connecting to its engine and passed after rebuilding the headless host. The runtime integration passed its behavior assertions before a temporary-directory cleanup error and passed on rerun in a dedicated temp directory. Companion integration passed.
+- The [installed current-source MSIX run](https://github.com/jwjp/agent-council/actions/runs/42973478262) uses a trial launcher that removes the runtime/WebView2 path overrides. It verifies both packaged process identities, actual `LocalState` paths and the local package update API, then reruns fixture execution, lifecycle, idle upgrade and removal. Store URI activation and Store service updates on consumer Windows 11 remain separate checks. [Debug packages](https://github.com/jwjp/agent-council/actions/runs/42973478262/artifacts/13833779640).
+
 ## Windows MSIX compatibility trial — 2026-11-11
 
 Built two unsigned x64 MSIX packages around the actual verified beta.3 Windows EXE. Both carry the trial-only identity and a thin launcher for isolated package-local runtime/auth/WebView2 data. The installed GUI and host were checked with `GetPackageFullName`. The non-elevated local Windows 11 test was rejected at deployment with `0x80073D2B`; it registered no trial package. [Microsoft unsigned MSIX deployment](https://learn.microsoft.com/en-us/windows/msix/package/unsigned-package).

@@ -20,12 +20,14 @@ Desktop MSIX can run full-trust processes; it does not inherently require rewrit
 
 ## Compatibility trial results
 
-The two unsigned x64 packages (`0.0.1.0` and `0.0.2.0`) wrap the verified beta.3 EXE with a trial-only launcher. The distinct `AgentCouncil.CompatibilityTrial` family stores the runtime, WebView2 profile and isolated auth under its own `LocalState`. Both package versions contain the same application bytes; the version change exercises package replacement and data retention. The manifest uses `packagedClassicApp`, `mediumIL`, `runFullTrust` and Microsoft's unsigned development identity suffix. [Unsigned MSIX testing](https://learn.microsoft.com/en-us/windows/msix/package/unsigned-package).
+The initial unsigned x64 packages (`0.0.1.0` and `0.0.2.0`) wrapped the verified beta.3 EXE with a trial-only launcher. The distinct `AgentCouncil.CompatibilityTrial` family used its own `LocalState` for runtime, WebView2 and isolated auth. Both package versions contained the same application bytes and exercised package replacement and data retention. The manifest uses `packagedClassicApp`, `mediumIL`, `runFullTrust` and Microsoft's unsigned development identity suffix. [Unsigned MSIX testing](https://learn.microsoft.com/en-us/windows/msix/package/unsigned-package).
 
 Run from the repository root in PowerShell with the x64 Windows SDK and Rust installed. Use a disposable Windows test environment with an elevated session for deployment.
 
 ```powershell
-./scripts/build-msix-trial.ps1 -Executable path/to/verified-beta3/AgentCouncil.exe -OutputDirectory .runtime-test/msix-local
+npm ci
+npm run tauri -- build --debug --no-bundle
+./scripts/build-msix-trial.ps1 -Executable src-tauri/target/debug/AgentCouncil.exe -OutputDirectory .runtime-test/msix-local
 ./tests/msix-trial.ps1 -PackageDirectory .runtime-test/msix-local
 ```
 
@@ -33,22 +35,30 @@ Source `49b327e` [passed the hosted trial](https://github.com/jwjp/agent-council
 
 The local Windows 11 non-elevated attempt failed with `0x80073D2B` when deployment encountered unsigned executable activation. The hosted elevated installation succeeded. The trial uses no local certificate import or Windows security setting changes. Provider login reuse was outside the isolated fixture check. Update while active, clean Windows 11 startup without developer tools, production data migration and Store servicing remain open. [Detailed verification](verification.md#windows-msix-compatibility-trial--2026-11-11).
 
+## Windows package data and updates
+
+The current app reads the package family from Windows. Its default runtime directory is `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\council`, and its WebView2 profile is in `LocalState\webview`. Portable installs still default to `%LOCALAPPDATA%\AgentCouncil`. Existing `AGENT_COUNCIL_DATA` overrides still take precedence for the runtime. Separate stores prevent the portable and packaged apps from sharing a background engine. Importing an existing portable history or settings requires an explicit migration, which remains future work. [Package-local data guidance](https://learn.microsoft.com/en-us/windows/msix/msix-troubleshooting-guide).
+
+The update dialog uses the Windows package response and opens Microsoft Store's Updates and downloads page through a fixed native command. The host skips GitHub release checks for a packaged process. The portable install command rejects packaged processes before downloading anything. Provider login discovery continues to use the existing provider-specific paths. The trial launcher sets isolated auth and fixture PATH for tests. [Microsoft Store URI](https://learn.microsoft.com/en-us/windows/apps/develop/launch/launch-store-app).
+
+The [current-source Windows MSIX run](https://github.com/jwjp/agent-council/actions/runs/42973478262) verified both actual package-local paths and the update API with the path overrides removed. The desktop browser test verified the dialog using the package response. [Verification details](verification.md#windows-package-state-and-updates--2026-11-11).
+
 ## Application-specific release checks
 
 | Area / current source | Required evidence before submission |
 | --- | --- |
 | External CLIs — `process.rs` | Repeat with real installed adapters, including Node/Windows command shims and their PATH. Fixture discovery, execution, project/reference access and cancellation passed. |
 | Existing sign-ins/usage — `quota.rs` | Test actual credential locations and quota probes under package identity, especially Cursor IDE database/DPAPI access. Keep secrets out of logs and frontend. Record signed-out states honestly. |
-| Persistence — `model.rs`, `store.rs` | Decide migration/coexistence with `%LOCALAPPDATA%\AgentCouncil`. Trial `LocalState` survived the idle upgrade. |
+| Persistence — `platform.rs`, `store.rs` | Validate package-local state with the Store identity. An explicit portable-data import remains open. |
 | Detached engine — `main.rs`, `server.rs` | Verify package updates and removal while a job is active. Trial `--serve` launch, GUI reopen and idle upgrade passed. |
-| Updates — `updates.rs` | Add channel-aware behavior. The current GitHub updater writes beside/replaces its running EXE via PowerShell; this is incompatible with a read-only MSIX installation. Store builds must use package/Store update handling instead. |
+| Updates — `updates.rs` | Verify Store delivery and its effect on active jobs under the final package identity. Package updates and the portable GitHub updater now use separate paths. |
 | WebView2 / manifest / assets | Validate runtime prerequisites, Store package identity, appropriate full-trust capability declarations, icons and clean-machine startup. |
 
 Store policies allow disclosed external software dependencies, but require a testable product. Prepare clear CLI/account prerequisites and certification instructions, plus an accurate privacy policy covering provider calls, automatic quota queries and local credential handling. Review the applicable capabilities and AI-content requirements before submission; approval is not established by this assessment. [Store policies](https://learn.microsoft.com/en-us/windows/apps/publish/store-policies).
 
 ## Next steps
 
-1. In Partner Center, reserve the product name for the packaged/MSIX route and obtain its exact Identity Name, Publisher and PublisherDisplayName. Do not substitute the Tauri bundle identifier for these values or accidentally select the MSI/EXE listing route.
-2. Select the Store data path/migration strategy and use the package channel for updates. Add a backend guard against running the portable updater in an installed MSIX.
+1. In Partner Center, choose **Apps & games → New product → MSIX or PWA app** and reserve **Agent Council**. In **Product management → Product identity**, obtain the exact `Package/Identity/Name`, `Package/Identity/Publisher` and `Package/Properties/PublisherDisplayName`. The browser automation session stopped before it could verify the dashboard URL, so the reservation and values are still unconfirmed. [Name reservation](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/reserve-your-apps-name) · [Product identity](https://learn.microsoft.com/en-us/windows/apps/publish/product-management-and-services).
+2. Prepare the release manifest using the confirmed Store identity. Decide whether to include a portable-data import for the first Store release.
 3. Verify the release-style package on Windows 11 with real CLI installations, existing sign-ins, a clean user environment and package servicing during active work.
-4. Prepare listing/privacy/certification material and Store-specific release automation. Preserve the unsigned development loop. Account actions and final submission remain owner decisions.
+4. Prepare listing/privacy/certification material and Store-specific release automation. Preserve the unsigned development loop.
