@@ -9,6 +9,15 @@ Source `8f7ade10c2e61ae693fb83f30d7c519b400661b4` [passed Android-only CI](https
 - Installed and cold-launched the APK. UI hierarchy confirmed the pairing heading and both labels, and the downloaded `pairing.png` showed the form. [CI artifact with APK, screenshots and test XML](https://github.com/jwjp/agent-council/actions/runs/42943571897/artifacts/13822590515).
 - Local mobile build, 22 frontend tests, three packaged mock-IPC checks, dependency boundary and smoke-script syntax passed. Android physical-device behavior, ARM64 APK, native pairing to a real tailnet and distribution remain to be tested. The Android-only run skipped the iOS job.
 
+### Local Android pairing and recovery
+
+Installed the same CI x86_64 APK in a read-only Pixel_10 AVD using Android 17 (API 37.1 system image). A separate beta.3/revision-4 test host used the existing idle private Serve 8443 route. The default emulator DNS failed to resolve the tailnet name. Starting the AVD with `-dns-server 100.100.100.100` let its traffic reach the PC through the existing Windows Tailscale connection. Certificate validation stayed enabled. This setup did not exercise the Android Tailscale client.
+
+- The native UI claimed an invitation. The isolated host approved the matching request, and the app displayed the sample workspace and composer. After an Android force-stop and cold launch with a new PID, it restored the same grant and the previously saved Korean draft. Test-host SQLite confirmed both draft writes.
+- Wi-Fi/data toggles alone did not produce the expected WebView online flag. Airplane mode and a failed TCP reachability probe confirmed the outage. Offline typing retained the draft while the app stayed open, and the isolated host still held the previous draft. After reconnection, the updated draft was stored and the UI displayed the PC-save status. An early frame showed the connection status lag; on the measured rerun the UI showed Reconnecting and disabled Send about 0.3 seconds after the failed probe.
+- Revoking the device from the isolated host returned the running app to the pairing form, removed the grant and cleared its test draft. No agent request was submitted. Inspected `restored.png`, `offline-indicator.png`, `reconnected.png` and `revoked.png` in `.runtime-test/android-local-1794375153/`. Stopped the idle test host and read-only AVD, removed their debug forwarding and verified both Serve routes were unchanged.
+- The run covers the native Android app over the PC's real private HTTPS route. Physical ARM64 installation, the Android Tailscale VPN client, physical Korean IME and OEM background behavior remain open.
+
 ## Cross-version upgrade — 2026-11-10
 
 Added `tests/upgrade.mjs`, a manual two-binary regression harness. Both paths are required; it never defaults to a production profile or downloads an executable. It reuses the native Rust fixture and private data/auth/PATH conventions, allocates only a loopback companion listener and checks temporary-root ownership before cleanup. No tailnet configuration or real model call is involved.
