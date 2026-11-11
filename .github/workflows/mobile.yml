@@ -5,11 +5,17 @@ on:
   pull_request:
     paths: ["mobile/**", "src/companion*", "src-tauri/crates/council-client/**", "vite.mobile.config.ts", ".github/workflows/mobile.yml"]
   workflow_dispatch:
+    inputs:
+      android_only:
+        description: Run the Android build and emulator checks
+        type: boolean
+        default: false
 concurrency:
   group: native-companion-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   frontend:
+    if: ${{ !inputs.android_only }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +28,7 @@ jobs:
       - run: node tests/native-companion-ui.mjs
       - run: node tests/native-companion-ui.mjs --dev
   ios-simulator:
+    if: ${{ !inputs.android_only }}
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
@@ -63,4 +70,55 @@ jobs:
           path: |
             .runtime-test/ios-*
             mobile/src-tauri/gen/apple/build/**/Council Companion.app
+          if-no-files-found: warn
+  android-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NDK_VERSION: 28.2.13676358
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mobile/src-tauri
+          cache-on-failure: true
+      - name: Install Android SDK and NDK
+        run: |
+          sdkmanager 'platforms;android-37.0' "ndk;$NDK_VERSION"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+      - run: npm ci
+      - run: npm run build:mobile
+      - run: node scripts/check-mobile-boundary.mjs
+      - name: Build Companion debug APK
+        working-directory: mobile
+        run: |
+          npm run tauri -- android init --ci
+          npm run tauri -- android build --debug --apk --target x86_64 --ci
+      - name: Enable emulator acceleration
+        run: sudo chown "$(id -u):$(id -g)" /dev/kvm
+      - name: Verify Android Keystore and rendered pairing screen
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          script: |
+            mobile/src-tauri/gen/android/gradlew -p mobile/src-tauri/gen/android :tauri-plugin-secure-link:connectedDebugAndroidTest
+            node scripts/android-smoke.mjs "$(find mobile/src-tauri/gen/android/app/build/outputs/apk -type f -name '*-debug.apk')"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-emulator-evidence
+          include-hidden-files: true
+          path: |
+            .runtime-test/android/
+            mobile/src-tauri/gen/android/app/build/outputs/apk/**/*-debug.apk
+            mobile/src-tauri/plugins/secure-link/android/build/outputs/androidTest-results/
           if-no-files-found: warn

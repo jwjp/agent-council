@@ -46,6 +46,19 @@ Intel runners use `--target x86_64`. The generated Xcode project is ignored; pac
 
 `node tests/native-companion-ui.mjs` uses the packaged frontend and mocked native IPC; it checks pairing, report/file views, native web dispatch, draft writes, reload, revocation and local forget. This is separate from Swift/Keychain execution and from the real-host browser tests. The first native alpha accepts a pasted pairing link; it has no built-in QR scanner yet.
 
+## Android debug build and emulator checks
+
+The Android CI job uses JDK 21, Android SDK 37.0, NDK 28.2.13676358 and Rust `x86_64-linux-android`. Set `ANDROID_HOME` and `NDK_HOME` to the SDK and NDK directories before building locally. Build the web assets with `npm run build:mobile` from the repository root, then run these commands from `mobile/`. The generated Gradle project lives under `src-tauri/gen/android`.
+
+```sh
+npm run tauri -- android init --ci
+npm run tauri -- android build --debug --apk --target x86_64 --ci
+```
+
+The CI job runs AndroidJUnit tests against the same `ConnectionVault` used by the app plugin. It checks encrypted storage, non-exportable key material, updates, deletion, damaged data, input size and the Android cleartext policy. The Android manifest uses a Network Security Configuration to preserve HTTPS-only platform behavior alongside Tauri's generated debug manifest. The native bridge also validates HTTPS origins independently. [Android manifest documentation](https://developer.android.com/guide/topics/manifest/application-element#usesCleartextTraffic)
+
+The API 35 x86_64 emulator installs the built APK. `node scripts/android-smoke.mjs DEBUG_APK` requires the pairing heading and both form labels in the Companion app's visible UI hierarchy and captures the screen for inspection. The `android-emulator-evidence` CI artifact carries the debug APK, screen and instrumentation results. Run the workflow with `android_only=true` to repeat this check independently. Use the ABI-matched build for hardware validation.
+
 The simulator smoke test must prove the screen rendered, not just that `simctl launch` returned a PID. `scripts/ios-smoke.mjs` now polls screenshots for up to 90 seconds and uses the CI-only Swift/Vision helper to recognize the pairing heading plus both form labels. Blank, status-bar-only, loading and incomplete frames fail the screen gate; `node tests/ios-screen-check.mjs` checks those negative controls and valid wrapped/case-varied text. Screenshot/OCR evidence is retained, with bounded runtime diagnostics on render failure. Inspect the actual final screenshot even when the gate passes. No app permission, signing policy or launch-command timeout is relaxed. [Apple's text recognition API](https://developer.apple.com/documentation/vision/recognizing-text-in-images).
 
 ## Verified milestone — 2026-11-06
@@ -60,7 +73,7 @@ The initial unsigned test host could not access Keychain. Post-link signing with
 
 ## Distribution boundary
 
-Physical iPhone installation still requires Apple provisioning/signing; TestFlight/App Store distribution requires Apple Developer Program enrollment and App Store Connect setup. This repository has no Apple signing credentials or TestFlight upload configuration. Do not publish a simulator/ad-hoc test bundle as an installable iPhone release. Android native glue is present but Android builds/device validation are a later step.
+Physical iPhone installation requires Apple provisioning/signing. TestFlight/App Store distribution requires Apple Developer Program enrollment and App Store Connect setup. Android hardware pairing and distribution signing are separate verification steps after the emulator checks.
 
 Owner reported no Apple Developer Program membership on 2026-11-06. No paid enrollment is needed for the CI/simulator work. Until native distribution is prepared, the existing Safari HTTPS companion remains the usable iPhone route. No new Tailscale routes, account sign-ins or paid enrollments are configured by this work.
 
