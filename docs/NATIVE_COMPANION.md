@@ -46,6 +46,8 @@ Intel runners use `--target x86_64`. The generated Xcode project is ignored; pac
 
 `node tests/native-companion-ui.mjs` uses the packaged frontend and mocked native IPC; it checks pairing, report/file views, native web dispatch, draft writes, reload, revocation and local forget. This is separate from Swift/Keychain execution and from the real-host browser tests. The first native alpha accepts a pasted pairing link; it has no built-in QR scanner yet.
 
+The iOS smoke test polls screenshots for up to 90 seconds and uses a CI-only Swift/Vision helper to recognize the pairing heading and both form labels. Blank, status-bar-only, loading and incomplete frames fail. `node tests/ios-screen-check.mjs` exercises those cases and valid wrapped/case-varied text. CI retains screenshot/OCR evidence and bounded runtime diagnostics on render failure. Inspect the actual final screenshot when the gate passes. [Apple's text recognition API](https://developer.apple.com/documentation/vision/recognizing-text-in-images).
+
 ## Android debug build and emulator checks
 
 The Android CI job uses JDK 21, Android SDK 37.0, NDK 28.2.13676358 and Rust `x86_64-linux-android`. Set `ANDROID_HOME` and `NDK_HOME` to the SDK and NDK directories before building locally. Build the web assets with `npm run build:mobile` from the repository root, then run these commands from `mobile/`. The generated Gradle project lives under `src-tauri/gen/android`.
@@ -59,9 +61,9 @@ The CI job runs AndroidJUnit tests against the same `ConnectionVault` used by th
 
 The API 35 x86_64 emulator installs the built APK. `node scripts/android-smoke.mjs DEBUG_APK` requires the pairing heading and both form labels in the Companion app's visible UI hierarchy and captures the screen for inspection. The `android-emulator-evidence` CI artifact carries the debug APK, screen and instrumentation results. Run the workflow with `android_only=true` to repeat this check independently. Use the ABI-matched build for hardware validation.
 
-The simulator smoke test must prove the screen rendered, not just that `simctl launch` returned a PID. `scripts/ios-smoke.mjs` now polls screenshots for up to 90 seconds and uses the CI-only Swift/Vision helper to recognize the pairing heading plus both form labels. Blank, status-bar-only, loading and incomplete frames fail the screen gate; `node tests/ios-screen-check.mjs` checks those negative controls and valid wrapped/case-varied text. Screenshot/OCR evidence is retained, with bounded runtime diagnostics on render failure. Inspect the actual final screenshot even when the gate passes. No app permission, signing policy or launch-command timeout is relaxed. [Apple's text recognition API](https://developer.apple.com/documentation/vision/recognizing-text-in-images).
+On 2026-11-11, [Android CI passed](https://github.com/jwjp/agent-council/actions/runs/42943571897) on source `8f7ade1`. The debug APK contains the x86_64 library. The API 35 emulator launched the APK and rendered the pairing form. All four instrumentation cases passed against the shared Android vault in an isolated test application. The downloaded pairing screenshot and test results were inspected. [APK and emulator evidence](https://github.com/jwjp/agent-council/actions/runs/42943571897/artifacts/13822590515).
 
-## Verified milestone — 2026-11-06
+## iOS verification
 
 On 2026-11-10, source `5982dda` [passed the strengthened native workflow](https://github.com/jwjp/agent-council/actions/runs/42815119434): 22 frontend tests, pairing-screen gate controls, packaged/development mock IPC, native iOS build/install/launch, three actual Keychain tests with zero failures and an OCR-confirmed pairing form. Downloaded the successful artifact and visually inspected its actual iPhone 17 Pro Simulator screenshot. This follows a launch timeout and a PID-only rerun whose captured screen was blank; those are not rendered-UI passes. App/desktop versions and published Windows assets were not changed by the test-harness work. Actual native pairing to the owner's host and physical native-device behavior remain unverified. See [upgrade and render evidence](verification.md#cross-version-upgrade--2026-11-10).
 
@@ -69,7 +71,7 @@ Follow-up source `2aba999` (2026-11-07) passed [native CI](https://github.com/jw
 
 Source `f5f8115` passed [native CI](https://github.com/jwjp/agent-council/actions/runs/42220316056): 16 frontend tests, packaged/development mock-IPC flows, native iOS build, three actual Keychain XCTest cases, simulator install/launch and an inspected clean iPhone 17 Pro pairing screenshot. [Windows/macOS regression CI](https://github.com/jwjp/agent-council/actions/runs/42220316060) also passed. Artifact `ios-simulator-evidence` contains the simulator bundle, screenshot, launch/entitlement diagnostics and XCTest result.
 
-The initial unsigned test host could not access Keychain. Post-link signing with restricted iOS entitlements then prevented app launch. Letting Xcode generate its simulator signature and embedded simulated entitlements resolved both; do not use `--no-sign` for these Keychain checks. No physical iPhone, native-to-real-tailnet pairing, lock/restore behavior on hardware, built-in QR scanner, Android build, push or distribution is verified by this milestone.
+The initial unsigned test host could not access Keychain. Post-link signing with restricted iOS entitlements then prevented app launch. Letting Xcode generate its simulator signature and embedded simulated entitlements resolved both; do not use `--no-sign` for these Keychain checks. Physical native pairing and lock/restore on hardware, built-in QR scanning, push and distribution remain open.
 
 ## Distribution boundary
 

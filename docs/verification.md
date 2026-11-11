@@ -1,5 +1,14 @@
 # v3 migration verification
 
+## Android native companion — 2026-11-11
+
+Source `8f7ade10c2e61ae693fb83f30d7c519b400661b4` [passed Android-only CI](https://github.com/jwjp/agent-council/actions/runs/42943571897). The initial run `42943158796` failed before compilation because the runner's `sdkmanager` was outside PATH. The successful run uses the Android SDK's installed command-line tools path.
+
+- Built the debug APK with Rust x86_64, JDK 21, Android SDK 37.0 and NDK 28.2.13676358. The downloaded APK contains `lib/x86_64/libcouncil_companion.so`; SHA-256 `9faed7b7c21b23ce6a33366d02de504d05d7b0fec408b4f64de59d616546c2d2`.
+- The API 35 emulator passed four AndroidJUnit tests with zero failures, errors or skips. The isolated test application exercises the plugin's shared Keystore vault for encrypted persistence and updates, non-exportable keys, tamper rejection and deletion, invalid-size write preservation and cleartext denial.
+- Installed and cold-launched the APK. UI hierarchy confirmed the pairing heading and both labels, and the downloaded `pairing.png` showed the form. [CI artifact with APK, screenshots and test XML](https://github.com/jwjp/agent-council/actions/runs/42943571897/artifacts/13822590515).
+- Local mobile build, 22 frontend tests, three packaged mock-IPC checks, dependency boundary and smoke-script syntax passed. Android physical-device behavior, ARM64 APK, native pairing to a real tailnet and distribution remain to be tested. The Android-only run skipped the iOS job.
+
 ## Cross-version upgrade — 2026-11-10
 
 Added `tests/upgrade.mjs`, a manual two-binary regression harness. Both paths are required; it never defaults to a production profile or downloads an executable. It reuses the native Rust fixture and private data/auth/PATH conventions, allocates only a loopback companion listener and checks temporary-root ownership before cleanup. No tailnet configuration or real model call is involved.
