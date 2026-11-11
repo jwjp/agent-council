@@ -61,6 +61,7 @@ Run commands from the repository root. Install dependencies with `npm ci` when n
 | Rust formatting | `cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check` |
 | Shipping artifact | `npm run tauri build -- --no-bundle`, then `node tests/runtime.mjs src-tauri/target/release/AgentCouncil.exe` and relevant native UI checks |
 | MSIX compatibility trial | Package a current embedded debug EXE with `scripts/build-msix-trial.ps1`, then run `tests/msix-trial.ps1` on a disposable elevated Windows runner. See [Store trial](docs/STORE_DISTRIBUTION.md#compatibility-trial-results). |
+| Store MSIX candidate | Build a fresh embedded release EXE and use `scripts/build-store-msix.ps1`. Preserve the Partner Center identity and check the actual archive and executable hash. See [Store candidate](docs/STORE_DISTRIBUTION.md#store-submission-candidate). |
 | Documentation-only | Review links, source accuracy and `git diff --check`; do not rebuild the app just to edit instructions |
 
 Select checks based on the behavior at risk. After they pass, repeat/broaden only for new changes, failures or unresolved concerns. Fixtures prove orchestration/adapter handling, not that every provider's real coding or review succeeds. Label fixture, live-account and native visual evidence separately. Live model calls can consume the user's quota; do not run broad provider sweeps unnecessarily.

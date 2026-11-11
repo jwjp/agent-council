@@ -5,25 +5,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$exe = (Resolve-Path -LiteralPath $Executable).Path
-$repository = Split-Path $PSScriptRoot
-$sdkBin = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
-$makeAppx = Get-ChildItem -LiteralPath $sdkBin -Directory |
-    Where-Object { $_.Name -match '^\d+(\.\d+){3}$' } |
-    Sort-Object { [version] $_.Name } -Descending |
-    ForEach-Object { Join-Path $_.FullName 'x64\makeappx.exe' } |
-    Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
-    Select-Object -First 1
-if (!$makeAppx) { throw 'Install the Windows SDK x64 MakeAppx tool.' }
-
-$output = [IO.Directory]::CreateDirectory($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)).FullName
-$stage = Join-Path $output 'package-source'
-if (Test-Path -LiteralPath $stage) { throw 'Choose a new trial output directory.' }
-$assets = [IO.Directory]::CreateDirectory((Join-Path $stage 'Assets')).FullName
-Copy-Item -LiteralPath $exe -Destination (Join-Path $stage 'AgentCouncil.exe')
-foreach ($icon in 'Square44x44Logo.png', 'Square150x150Logo.png', 'StoreLogo.png') {
-    Copy-Item -LiteralPath (Join-Path $repository "src-tauri\icons\$icon") -Destination $assets
-}
+. (Join-Path $PSScriptRoot 'msix-packaging.ps1')
+$makeAppx = Find-MakeAppx
+$source = New-MsixSource $Executable $OutputDirectory
+$output = $source.Output
+$stage = $source.Stage
 $launcher = Join-Path $output 'TrialLauncher.exe'
 & rustc --edition=2024 --target x86_64-pc-windows-msvc (Join-Path $PSScriptRoot 'msix-trial-launcher.rs') -o $launcher
 if ($LASTEXITCODE) { throw 'Could not build the isolated MSIX trial launcher.' }

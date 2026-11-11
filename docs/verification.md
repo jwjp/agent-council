@@ -1,5 +1,18 @@
 # v3 migration verification
 
+## Store MSIX submission candidate — 2026-11-11
+
+Built the embedded Windows x64 release EXE from application source `244552bb03a4c6dec8c863277b2d3e88a3861d0b` with `npm run tauri -- build --no-bundle -- --locked`. Runtime and companion integration passed against that exact EXE using isolated fixture CLIs and data. These checks exercised the portable release executable before packaging.
+
+Windows SDK MakeAppx packed and unpacked `AgentCouncil-Store-3.2.0.0-x64.msix` successfully. The unpacked manifest matches all three Partner Center identity fields, package version `3.2.0.0`, x64 architecture and the direct EXE entry point. The Windows Appx manifest reader returned `JiwonMin.AgentCouncil_122269mbqjhdp`, matching Partner Center. The archive contained the expected EXE, three logos and MSIX metadata.
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `AgentCouncil-Store-3.2.0.0-x64.msix` | 6,982,912 | `be7416e93521c29252302a6880a27f883162af2795550464050cbe0ff70c9b5c` |
+| `AgentCouncil.exe` (build and extracted payload) | 18,224,640 | `9b4d937920f951fefc65a0ea9d4d3b682bd9d52708a0fb6e17a75a389273a676` |
+
+The candidate and embedded EXE are unsigned. Both isolated trial packages still build with the shared packaging helper, and the Store packer rejects a nonzero fourth version component. WACK requires an elevated Windows session and was not run. Store-signed installation, existing provider sign-ins under the Store identity, Partner Center validation and certification remain unverified. [Store packaging and handoff](STORE_DISTRIBUTION.md#store-submission-candidate).
+
 ## Windows package state and updates — 2026-11-11
 
 Source `7b63515ab79ed869b04a74cf66eaea0ddb5f45f3` moved packaged runtime and WebView2 defaults into package-family `LocalState`. The host returns the Windows package update response directly and guards the portable updater. The Store UI command opens a fixed Microsoft Store URI. Partner Center was not inspected because the browser session could not validate the active URL.

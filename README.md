@@ -47,7 +47,7 @@ Coding agents should start with [AGENTS.md](AGENTS.md) and [shared project statu
 
 CI uses Node 22 LTS for development/build tools; Node 24's bundled Fetch currently has a [reported macOS socket crash](https://github.com/nodejs/undici/issues/6075). The shipped Rust applications do not require Node.
 
-The unsigned Windows MSIX compatibility trial passed installation, fixture CLI execution and an idle package upgrade. Store submission and certification are pending. See the [distribution assessment and trial results](docs/STORE_DISTRIBUTION.md).
+The Windows MSIX compatibility trial passed installation, fixture CLI execution and an idle package upgrade. An unsigned x64 candidate uses the assigned Microsoft Store identity. Store submission and certification are pending. See the [Store packaging and trial results](docs/STORE_DISTRIBUTION.md).
 
 Planned macOS and native mobile roles, shared-code boundaries and validation milestones are described in the [cross-platform roadmap](docs/CROSS_PLATFORM_ROADMAP.md). See the companion preview above for browser support and remaining device/route validation.
 

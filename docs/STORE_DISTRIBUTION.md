@@ -1,6 +1,6 @@
 # Microsoft Store distribution assessment
 
-Updated 2026-11-11. The Windows x64 MSIX compatibility trial passed in an isolated Windows Server 2025 runner. The owner reports Partner Center registration is complete. Product name reservation, Store identity, submission and certification remain open.
+Updated 2026-11-11. The owner supplied the reserved Agent Council product identity from Partner Center. An unsigned Windows x64 submission candidate has been built with that identity. Store upload and certification remain open.
 
 ## Recommendation and costs
 
@@ -14,9 +14,25 @@ Unsigned binaries **can** acquire file-hash reputation; each changed version sta
 
 ## Packaging route
 
-The current `src-tauri/tauri.conf.json` targets NSIS. The compatibility trial uses Windows SDK MakeAppx separately from Tauri's normal bundle step. [Tauri guide](https://v2.tauri.app/distribute/microsoft-store/), [Microsoft MakeAppx guide](https://learn.microsoft.com/en-us/windows/msix/package/create-app-package-with-makeappx-tool).
+The current `src-tauri/tauri.conf.json` targets NSIS. The Store candidate and compatibility trial use Windows SDK MakeAppx separately from Tauri's normal bundle step. [Tauri guide](https://v2.tauri.app/distribute/microsoft-store/), [Microsoft MakeAppx guide](https://learn.microsoft.com/en-us/windows/msix/package/create-app-package-with-makeappx-tool).
 
 Desktop MSIX can run full-trust processes; it does not inherently require rewriting into UWP/AppContainer. Package files are read-only and filesystem behavior depends on manifest/runtime choices. Full trust here is a Windows application model, not administrator elevation or permission to change a user's selected agent policy. [Packaged desktop behavior](https://learn.microsoft.com/en-us/windows/msix/desktop/desktop-to-uwp-behind-the-scenes).
+
+## Store submission candidate
+
+The [Store manifest](../packaging/windows/AppxManifest.xml) uses `JiwonMin.AgentCouncil`, `CN=A69309D0-F413-460B-82C0-81608F46D4F1` and `Jiwon Min`. The unpacked manifest's package family, read by the Windows Appx API, matches Partner Center's `JiwonMin.AgentCouncil_122269mbqjhdp`. The Store ID is `9P6TSDW87WP3`.
+
+Run on Windows with the x64 SDK and Rust. Use a clean source revision and a fresh output directory.
+
+```powershell
+npm ci
+npm run tauri -- build --no-bundle -- --locked
+./scripts/build-store-msix.ps1 -Executable src-tauri/target/release/AgentCouncil.exe -OutputDirectory dist/store-3.2.0.0-20261111
+```
+
+The candidate uses package version `3.2.0.0` with the current `3.2.0-beta.3` app, targets Windows 11 x64 and starts the application directly. It uses the confirmed Store publisher and the Store version convention with a zero fourth component. There is no trial launcher, test identity marker, auth fixture or CLI bundled in the package. [Store package requirements](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/app-package-requirements).
+
+`AgentCouncil-Store-3.2.0.0-x64.msix` is a single unsigned package for Partner Center's **Packages** page. The Store lists `.msix` as an accepted upload format. Windows App Certification Kit, a Store-signed installation and Partner Center validation remain open. [Upload MSIX packages](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/device-families) · [Candidate verification](verification.md#store-msix-submission-candidate--2026-11-11).
 
 ## Compatibility trial results
 
@@ -52,13 +68,12 @@ The [current-source Windows MSIX run](https://github.com/jwjp/agent-council/acti
 | Persistence — `platform.rs`, `store.rs` | Validate package-local state with the Store identity. An explicit portable-data import remains open. |
 | Detached engine — `main.rs`, `server.rs` | Verify package updates and removal while a job is active. Trial `--serve` launch, GUI reopen and idle upgrade passed. |
 | Updates — `updates.rs` | Verify Store delivery and its effect on active jobs under the final package identity. Package updates and the portable GitHub updater now use separate paths. |
-| WebView2 / manifest / assets | Validate runtime prerequisites, Store package identity, appropriate full-trust capability declarations, icons and clean-machine startup. |
+| WebView2 / manifest / assets | The candidate manifest and package family were verified locally. Validate Evergreen WebView2 and startup of the Store-signed package on a clean Windows 11 machine. |
 
 Store policies allow disclosed external software dependencies, but require a testable product. Prepare clear CLI/account prerequisites and certification instructions, plus an accurate privacy policy covering provider calls, automatic quota queries and local credential handling. Review the applicable capabilities and AI-content requirements before submission; approval is not established by this assessment. [Store policies](https://learn.microsoft.com/en-us/windows/apps/publish/store-policies).
 
 ## Next steps
 
-1. In Partner Center, choose **Apps & games → New product → MSIX or PWA app** and reserve **Agent Council**. In **Product management → Product identity**, obtain the exact `Package/Identity/Name`, `Package/Identity/Publisher` and `Package/Properties/PublisherDisplayName`. The browser automation session stopped before it could verify the dashboard URL, so the reservation and values are still unconfirmed. [Name reservation](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/reserve-your-apps-name) · [Product identity](https://learn.microsoft.com/en-us/windows/apps/publish/product-management-and-services).
-2. Prepare the release manifest using the confirmed Store identity. Decide whether to include a portable-data import for the first Store release.
-3. Verify the release-style package on Windows 11 with real CLI installations, existing sign-ins, a clean user environment and package servicing during active work.
-4. Prepare listing/privacy/certification material and Store-specific release automation. Preserve the unsigned development loop.
+1. Prepare listing, privacy and certification test instructions, including external CLI prerequisites and the `runFullTrust` capability's purpose.
+2. Run certification checks and validate the candidate in Partner Center when the owner authorizes the upload. Use a Store-signed test distribution to check a clean Windows 11 machine, existing CLI sign-ins and servicing during active work.
+3. Decide whether the first Store release should offer a portable-data import. Keep the trial and Store package identities separate.

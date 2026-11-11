@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/msix-trial.yml
       - scripts/build-msix-trial.ps1
+      - scripts/msix-packaging.ps1
       - scripts/msix-trial-launcher.rs
       - tests/msix-trial.ps1
       - tests/fixture_agent.rs
