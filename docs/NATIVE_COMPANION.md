@@ -65,6 +65,8 @@ On 2026-11-11, [Android CI passed](https://github.com/jwjp/agent-council/actions
 
 The same APK also passed local Pixel_10 emulator pairing over the PC's private Tailscale HTTPS route, cold restart with the saved connection and draft, offline draft sync and host revocation. The emulator reached the gateway through the PC's Tailscale connection. ARM64 hardware and Android VPN-client behavior remain separate checks. [Local evidence](verification.md#local-android-pairing-and-recovery).
 
+A second local test submitted a fixture request through the Android composer. It verified the original request and independent review after cold restart, advanced host progress after an offline interval and the final Markdown report. The host persisted exactly one job and one final report. [Workflow evidence](verification.md#android-native-request-workflow).
+
 ## iOS verification
 
 On 2026-11-10, source `5982dda` [passed the strengthened native workflow](https://github.com/jwjp/agent-council/actions/runs/42815119434): 22 frontend tests, pairing-screen gate controls, packaged/development mock IPC, native iOS build/install/launch, three actual Keychain tests with zero failures and an OCR-confirmed pairing form. Downloaded the successful artifact and visually inspected its actual iPhone 17 Pro Simulator screenshot. This follows a launch timeout and a PID-only rerun whose captured screen was blank; those are not rendered-UI passes. App/desktop versions and published Windows assets were not changed by the test-harness work. Actual native pairing to the owner's host and physical native-device behavior remain unverified. See [upgrade and render evidence](verification.md#cross-version-upgrade--2026-11-10).

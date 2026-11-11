@@ -18,6 +18,15 @@ Installed the same CI x86_64 APK in a read-only Pixel_10 AVD using Android 17 (A
 - Revoking the device from the isolated host returned the running app to the pairing form, removed the grant and cleared its test draft. No agent request was submitted. Inspected `restored.png`, `offline-indicator.png`, `reconnected.png` and `revoked.png` in `.runtime-test/android-local-1794375153/`. Stopped the idle test host and read-only AVD, removed their debug forwarding and verified both Serve routes were unchanged.
 - The run covers the native Android app over the PC's real private HTTPS route. Physical ARM64 installation, the Android Tailscale VPN client, physical Korean IME and OEM background behavior remain open.
 
+### Android native request workflow
+
+On 2026-11-11, the same x86_64 APK and read-only Pixel_10 AVD submitted `SMOOTH_PROGRESS` through the native composer to a fresh isolated beta.3/revision-4 Windows host over the existing private Serve HTTPS route. Existing Rust CLI fixtures ran as Claude lead and Codex/Grok reviewers. A temporary copy of the fixture used bounded gates to expose the stages long enough to inspect. No provider account or model call was used.
+
+- The Work stage and original request appeared. The Review stage showed 1/2 and the Codex tab rendered the completed result while Grok remained in review. Force-stopping and reopening the APK created a new process and restored the same device grant, request, stage and Codex result.
+- Airplane mode and a failed TCP reachability probe established that the emulator could not reach the PC. The host advanced to Discussion before connectivity returned. The reconnected app showed Discussion and 2/3 finished. Synthesis then rendered, followed by the Council report and its Markdown table.
+- Read-only host/API and SQLite checks confirmed one completed job, the same request ID, one user message, one work result, two reviews, three discussions, one final report and zero error events. This exercises reconnect after an accepted submission. A dropped response to the initial submission was outside this run.
+- The first harness attempt reached the first review, then attached during WebView startup. A fresh profile ran the UI journey after the harness waited for the execution context. Its final row assertion compared objects with different prototypes; the row fields matched and a separate normalized read-only check passed the final assertions. Inspected `restored-review.png`, `reconnected-discussion.png` and `report.png` in `.runtime-test/android-workflow-retry-1794376548/`. The test grant was revoked and the owned test processes and forwards were cleaned up. The original Serve routes were verified after cleanup.
+
 ## Cross-version upgrade — 2026-11-10
 
 Added `tests/upgrade.mjs`, a manual two-binary regression harness. Both paths are required; it never defaults to a production profile or downloads an executable. It reuses the native Rust fixture and private data/auth/PATH conventions, allocates only a loopback companion listener and checks temporary-root ownership before cleanup. No tailnet configuration or real model call is involved.
