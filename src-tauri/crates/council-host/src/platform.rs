@@ -35,6 +35,31 @@ pub fn home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+#[cfg(windows)]
+pub fn package_local_state() -> Option<PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::Storage::Packaging::Appx::{
+        GetCurrentPackageFamilyName, PACKAGE_FAMILY_NAME_MAX_LENGTH,
+    };
+
+    let mut family = [0u16; PACKAGE_FAMILY_NAME_MAX_LENGTH as usize + 1];
+    let mut length = family.len() as u32;
+    // Windows returns the process's registered package family, including its NUL.
+    if unsafe { GetCurrentPackageFamilyName(&mut length, family.as_mut_ptr()) } != 0 {
+        return None;
+    }
+    let family = OsString::from_wide(&family[..length as usize - 1]);
+    let local = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join("AppData/Local"));
+    Some(local.join("Packages").join(family).join("LocalState"))
+}
+
+#[cfg(not(windows))]
+pub fn package_local_state() -> Option<PathBuf> {
+    None
+}
+
 fn default_data_dir(
     os: Os,
     home: &Path,
@@ -58,6 +83,7 @@ fn default_data_dir(
 pub fn data_dir() -> PathBuf {
     std::env::var_os("AGENT_COUNCIL_DATA")
         .map(PathBuf::from)
+        .or_else(|| package_local_state().map(|path| path.join("council")))
         .unwrap_or_else(|| {
             default_data_dir(
                 current_os(),

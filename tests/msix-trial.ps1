@@ -131,7 +131,13 @@ try {
     $runtime = Read-Runtime $pkg $data
     $health = Invoke-TrialApi $runtime '/health'
     Assert-Trial ($health.pid -eq $runtime.pid) 'Descriptor does not identify the responding host.'
+    $null = Wait-Trial 'package-local WebView2 profile' {
+        Test-Path -LiteralPath (Join-Path $localState 'webview\EBWebView') -PathType Container
+    }
     Write-Host 'PASS MSIX registration, AppsFolder launch and packaged GUI/host identity'
+    $update = Invoke-TrialApi $runtime '/update'
+    Assert-Trial ($update.channel -eq 'windows-package' -and $update.available -eq $false -and $null -eq $update.asset -and $update.url -eq 'ms-windows-store://downloadsandupdates') 'Packaged host offered the wrong update channel.'
+    Write-Host 'PASS package-local runtime and WebView2 data, Windows package update response'
 
     $state = Invoke-TrialApi $runtime '/state'
     Assert-Trial (@($state.agents | Where-Object installed).Count -eq 6) 'One or more of the six CLI adapters was not detected.'

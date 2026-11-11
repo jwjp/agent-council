@@ -2019,6 +2019,13 @@ function SettingsModal({
     </Modal>
   );
 }
+type UpdateCheck = {
+  channel?: "windows-package";
+  available: boolean;
+  version: string;
+  url: string;
+};
+
 function UpdateModal({
   close,
   t,
@@ -2028,16 +2035,13 @@ function UpdateModal({
   t: Translate;
   currentVersion: string;
 }) {
-  const [result, setResult] = useState<{
-      available: boolean;
-      version: string;
-      url: string;
-    } | null>(null),
+  const [result, setResult] = useState<UpdateCheck | null>(null),
     [error, setError] = useState(""),
     [installing, setInstalling] = useState(false);
+  const packageUpdates = result?.channel === "windows-package";
   useEffect(() => {
     let alive = true;
-    void api<{ available: boolean; version: string; url: string }>("/update")
+    void api<UpdateCheck>("/update")
       .then((r) => {
         if (alive) setResult(r);
       })
@@ -2053,44 +2057,74 @@ function UpdateModal({
       <div className="update-content">
         <span className="brand-icon large">≋</span>
         <h3>
-          {error
-            ? t("Could not check for updates", "업데이트를 확인할 수 없습니다")
-            : !result
-              ? t("Checking for updates…", "업데이트를 확인하고 있어요…")
-              : result.available
-                ? t("A new version is ready", "새 버전이 준비되었습니다")
-                : t("You’re up to date", "최신 버전입니다")}
+          {packageUpdates
+            ? t("Windows package updates", "Windows 패키지 업데이트")
+            : error
+              ? t(
+                  "Could not check for updates",
+                  "업데이트를 확인할 수 없습니다",
+                )
+              : !result
+                ? t("Checking for updates…", "업데이트를 확인하고 있어요…")
+                : result.available
+                  ? t("A new version is ready", "새 버전이 준비되었습니다")
+                  : t("You’re up to date", "최신 버전입니다")}
         </h3>
         <p>
           {error ||
-            `Agent Council ${result?.available ? result.version : currentVersion}`}
+            (packageUpdates
+              ? t(
+                  "For Store installations, check for updates in Microsoft Store.",
+                  "Microsoft Store에서 설치했다면 스토어에서 업데이트를 확인하세요.",
+                )
+              : `Agent Council ${result?.available ? result.version : currentVersion}`)}
         </p>
-        {result?.available && (
-          <>
-            <button
-              className="primary-button"
-              disabled={installing}
-              onClick={() => {
-                setInstalling(true);
-                void invoke("install_update").catch((e) => {
-                  setError(String(e));
-                  setInstalling(false);
-                });
-              }}
-            >
-              <Download size={15} />
-              {installing
-                ? t("Downloading…", "다운로드 중…")
-                : t("Download & restart", "다운로드 후 다시 시작")}
-            </button>
-            <button
-              className="text-button"
-              onClick={() => void external(result.url)}
-            >
-              {t("Release notes", "변경 사항")}
-              <ArrowUpRight size={12} />
-            </button>
-          </>
+        {packageUpdates ? (
+          <button
+            className="primary-button"
+            onClick={() => {
+              setError("");
+              void invoke("open_store_updates").catch(() =>
+                setError(
+                  t(
+                    "Could not open Microsoft Store.",
+                    "Microsoft Store를 열 수 없습니다.",
+                  ),
+                ),
+              );
+            }}
+          >
+            <ArrowUpRight size={15} />
+            {t("Open Microsoft Store", "Microsoft Store 열기")}
+          </button>
+        ) : (
+          result?.available && (
+            <>
+              <button
+                className="primary-button"
+                disabled={installing}
+                onClick={() => {
+                  setInstalling(true);
+                  void invoke("install_update").catch((e) => {
+                    setError(String(e));
+                    setInstalling(false);
+                  });
+                }}
+              >
+                <Download size={15} />
+                {installing
+                  ? t("Downloading…", "다운로드 중…")
+                  : t("Download & restart", "다운로드 후 다시 시작")}
+              </button>
+              <button
+                className="text-button"
+                onClick={() => void external(result.url)}
+              >
+                {t("Release notes", "변경 사항")}
+                <ArrowUpRight size={12} />
+              </button>
+            </>
+          )
         )}
       </div>
     </Modal>

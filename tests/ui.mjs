@@ -101,6 +101,36 @@ try {
   );
   assert.ok(Date.now() - start < 15000, "Browser startup exceeded 15 seconds");
   pass("Browser connects to the real isolated Rust engine");
+  await page.route("**/v1/update", (route) =>
+    route.fulfill({
+      json: {
+        channel: "windows-package",
+        available: false,
+        version: "3.2.0-beta.3",
+        url: "ms-windows-store://downloadsandupdates",
+        asset: null,
+      },
+    }),
+  );
+  await page.getByTitle("App menu", { exact: true }).click();
+  await page.getByRole("button", { name: "Check for updates" }).click();
+  const packageUpdates = page.getByRole("dialog", { name: "Software update" });
+  await expect(
+    packageUpdates.getByRole("heading", { name: "Windows package updates" }),
+  ).toBeVisible();
+  await expect(
+    packageUpdates.getByRole("button", { name: "Open Microsoft Store" }),
+  ).toBeVisible();
+  await expect(
+    packageUpdates.getByRole("button", { name: "Download & restart" }),
+  ).toHaveCount(0);
+  await page.screenshot({ path: ".runtime-test/msix-update-dialog.png" });
+  await page.keyboard.press("Escape");
+  await expect(packageUpdates).toHaveCount(0);
+  await page.unroute("**/v1/update");
+  pass(
+    "Windows packages show Store update guidance and no portable install action",
+  );
   runtime = JSON.parse(readFileSync(join(root, "runtime.json"), "utf8"));
   const req = async (path, body, method = body ? "POST" : "GET") => {
     const r = await fetch(runtime.url + "/v1" + path, {

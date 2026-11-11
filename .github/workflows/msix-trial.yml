@@ -10,6 +10,10 @@ on:
       - tests/msix-trial.ps1
       - tests/fixture_agent.rs
       - src-tauri/icons/**
+      - src-tauri/src/main.rs
+      - src-tauri/crates/council-host/src/platform.rs
+      - src-tauri/crates/council-host/src/updates.rs
+      - src/App.tsx
 
 permissions:
   contents: read
@@ -17,20 +21,22 @@ permissions:
 jobs:
   trial:
     runs-on: windows-2025
-    timeout-minutes: 12
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
       - uses: dtolnay/rust-toolchain@stable
-      - name: Package the verified Windows preview
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+      - run: npm ci
+      - run: npm run tauri -- build --debug --no-bundle
+      - name: Package the current Windows debug executable
         shell: pwsh
         run: |
-          $exe = Join-Path $env:RUNNER_TEMP 'AgentCouncil.exe'
-          curl.exe --fail --location --retry 2 --output $exe https://github.com/jwjp/agent-council/releases/download/v3.2.0-beta.3/AgentCouncil.exe
-          if ($LASTEXITCODE -ne 0) { throw 'Preview download failed.' }
-          if ((Get-FileHash -LiteralPath $exe).Hash -ne 'BA43DFC42299D13458D16A20BDCEA5FEE04CA768F45169A13CE207A119F1B51D') {
-            throw 'Unexpected preview executable hash.'
-          }
-          ./scripts/build-msix-trial.ps1 -Executable $exe -OutputDirectory .runtime-test/msix-ci
+          ./scripts/build-msix-trial.ps1 -Executable src-tauri/target/debug/AgentCouncil.exe -OutputDirectory .runtime-test/msix-ci
       - name: Exercise installed package, host and upgrade
         shell: pwsh
         run: ./tests/msix-trial.ps1 -PackageDirectory .runtime-test/msix-ci

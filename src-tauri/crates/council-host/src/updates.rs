@@ -4,7 +4,18 @@ use serde_json::{json, Value};
 #[cfg(windows)]
 use sha2::{Digest, Sha256};
 
+pub const STORE_UPDATES_URI: &str = "ms-windows-store://downloadsandupdates";
+
 pub async fn available() -> Result<Value> {
+    if crate::platform::package_local_state().is_some() {
+        return Ok(json!({
+            "channel": "windows-package",
+            "available": false,
+            "version": VERSION,
+            "url": STORE_UPDATES_URI,
+            "asset": null,
+        }));
+    }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .user_agent("AgentCouncil")
@@ -53,6 +64,10 @@ mod tests {
 }
 #[cfg(windows)]
 pub async fn install() -> Result<()> {
+    anyhow::ensure!(
+        crate::platform::package_local_state().is_none(),
+        "Use Windows package updates for this installation."
+    );
     let release = available().await?;
     anyhow::ensure!(
         release["available"] == true,

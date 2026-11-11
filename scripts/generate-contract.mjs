@@ -145,7 +145,7 @@ const paths = {
     get: {
       operationId: "checkUpdate",
       description:
-        "Checks GitHub latest release without installing. Returns available, version, url and asset.",
+        "Checks GitHub latest release for portable installs. Windows packages return channel=windows-package, the current version and a Microsoft Store URI without a GitHub request. Returns available, version, url and asset.",
       responses,
     },
   },

@@ -29,9 +29,7 @@ fn trial_root() -> io::Result<PathBuf> {
 
 fn launch(root: &std::path::Path) -> io::Result<()> {
     let app = env::current_exe()?.with_file_name("AgentCouncil.exe");
-    let data = root.join("council");
     let auth = root.join("auth");
-    fs::create_dir_all(&data)?;
     fs::create_dir_all(&auth)?;
     let fixture = root.join("fixture-bin");
     let inherited = env::var_os("PATH").unwrap_or_default();
@@ -43,12 +41,12 @@ fn launch(root: &std::path::Path) -> io::Result<()> {
     };
     Command::new(app)
         .current_dir(root)
-        .env("AGENT_COUNCIL_DATA", data)
+        .env_remove("AGENT_COUNCIL_DATA")
         .env("AGENT_COUNCIL_AUTH_HOME", &auth)
         .env("CODEX_HOME", auth.join(".codex"))
         .env("CLAUDE_CONFIG_DIR", auth.join(".claude"))
         .env("GROK_HOME", auth.join(".grok"))
-        .env("WEBVIEW2_USER_DATA_FOLDER", root.join("webview"))
+        .env_remove("WEBVIEW2_USER_DATA_FOLDER")
         .env("PATH", path)
         .spawn()?;
     Ok(())
