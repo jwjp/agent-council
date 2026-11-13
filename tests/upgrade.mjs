@@ -246,7 +246,19 @@ try {
     await work.request("/draft", { text: "Private phone draft 한글" }, "PUT"),
   );
   const pending = await local("/companion/invitations", { allow_work: false });
-  const before = await local("/state");
+  let before = await local("/state");
+  // The published beta.3 predates account profiles. A profile-capable
+  // development build can also exercise preservation across the upgrade.
+  if (Array.isArray(before.settings.agent_profiles)) {
+    const config = join(root, ".claude-jw");
+    mkdirSync(config);
+    await local("/settings", {
+      ...before.settings,
+      agent_profiles: [{ name: "claude-jw", config_dir: config, display_name: "Claude Code 2" }],
+    }, "PUT");
+    before = await local("/state");
+    assert.equal(before.settings.agent_profiles[0]?.display_name, "Claude Code 2");
+  }
   const phoneBefore = await json(await work.request("/state"));
   assert.equal(
     bootstrap(newExe).status,
@@ -315,6 +327,16 @@ try {
   console.log(
     "PASS existing device cookies/drafts and read-only access survive; old invitations expire and accepted IDs do not rerun",
   );
+
+  if (before.settings.agent_profiles?.length) {
+    await local("/settings", { ...after.settings, reviewers: ["claude-jw"] }, "PUT");
+    await local("/jobs", { request: "CHECK_CLAUDE_PROFILES", request_id: "profile-after-upgrade" });
+    await idle();
+    const profileRun = await local("/state");
+    assert.equal(profileRun.job.status, "done");
+    assert.ok(profileRun.messages.some((m) => m.role === "claude-jw" && m.stage === "review" && m.text.includes("Claude JW")));
+    console.log("PASS upgraded Claude profile can still run independently as a reviewer");
+  }
 
   const newPid = runtime.pid;
   assert.equal(bootstrap(newExe).status, 0);
