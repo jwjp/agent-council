@@ -1,6 +1,6 @@
 # Microsoft Store distribution assessment
 
-Updated 2026-11-12. The owner submitted the validated Agent Council `3.2.0.0` x64 MSIX in Submission 1. The Partner Center screenshot shows `In certification` at `Pre-processing` with automatic publishing after certification.
+Updated 2026-11-13. Agent Council `3.2.0.0` is publicly listed and installs from Microsoft Store. The installed package reports `SignatureKind: Store`. On the owner's Windows PC, AppsFolder activation started the package-local runtime, which reported the Store update channel and completed a read-only request through the existing Claude Code sign-in. [Public Store listing](https://apps.microsoft.com/detail/9P6TSDW87WP3?hl=en-US&gl=US)
 
 ## Recommendation and costs
 
@@ -74,6 +74,6 @@ Store policies require external software dependencies to be disclosed at the sta
 
 ## Next steps
 
-1. Check the certification result in Partner Center for product `9P6TSDW87WP3`. Review the report if Microsoft requests changes. [MSIX certification process](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/app-certification-process).
-2. After publication, confirm the public listing and test installation, startup and a request with a supported signed-in CLI on Windows 11 x64. Store-signed updating during active work remains a separate check.
+1. Review the detailed certification report in Partner Center for product `9P6TSDW87WP3`. [MSIX certification process](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/app-certification-process).
+2. Verify Store servicing during active work when a newer Store package is available. A clean Windows installation and the other live CLI adapters have not been checked with the Store-signed build.
 3. Keep the [English/Korean listing](STORE_LISTING.md), [privacy policy](PRIVACY.md) and [certification notes](STORE_CERTIFICATION.md) available for the certification response or future updates. The last testing screenshot showed an empty Credentials section. Decide whether a later release should offer a portable-data import.
