@@ -4,7 +4,10 @@ A local workspace for coding agents and independent review. **Tauri 2 + React/Ty
 
 ## Install
 
-Download the Windows portable ZIP from [Releases](https://github.com/jwjp/agent-council/releases/latest), extract it and open `AgentCouncil.exe`. `Launch Agent Council.cmd` also launches the app, including from a source checkout with a built executable. Supported agent CLIs must be installed and signed in under your Windows user account and available on PATH.
+- **Microsoft Store** — [Install Agent Council for Windows 11 x64](https://apps.microsoft.com/detail/9P6TSDW87WP3). The free Store edition receives updates through Microsoft Store.
+- **Portable** — Download the [stable ZIP](https://github.com/jwjp/agent-council/releases/latest) or [3.2.0-beta.4 preview](https://github.com/jwjp/agent-council/releases/tag/v3.2.0-beta.4). Extract the ZIP and open `AgentCouncil.exe` or `Launch Agent Council.cmd`. Portable builds are unsigned.
+
+Install at least one supported agent CLI separately, sign in under your Windows account and make sure the CLI is on PATH.
 
 Open **Agents** to choose an optional lead agent and optional reviewers. The composer offers direct lead and execution permission selectors. Click the project name to select a folder. The top menu or **Ctrl+,** opens workspace and appearance settings, including reference folders, English/Korean, and light/dark/system appearance. Enter sends; Shift+Enter inserts a line. Korean IME composition is handled by WebView2, and Enter during composition does not send a request.
 
@@ -15,7 +18,7 @@ Open **Agents** to choose an optional lead agent and optional reviewers. The com
 - New installations default to all-agent full access. Existing installations retain their saved permission policy. Standard permissions and lead-only full access are also available. Reviews instruct agents not to modify files. With all-agent full access that instruction is not a filesystem restriction.
 - Reports render Markdown, code and tables. Split panes show different agents; activity logs retain phases, tools, and paced notes. Scrolling up does not force the reader back to the bottom.
 - Cancel stops the running CLI process tree on Windows. Job objects also close child processes if the Rust runtime exits. Interrupted work is marked **interrupted**, not silently restarted.
-- Messages, project drafts, job state and events persist in SQLite under `%LOCALAPPDATA%\AgentCouncil`. Existing v2 settings and per-folder chat JSON are imported without deleting the originals. Recent transcript excerpts carry into follow-up requests.
+- Messages, project drafts, job state and events persist in SQLite. Portable builds use `%LOCALAPPDATA%\AgentCouncil`. The Store edition keeps its own data in the Windows package's `LocalState` folder. Recent transcript excerpts carry into follow-up requests.
 - The bottom usage strip shows **account quota used** and reset countdowns. Click any agent for its quota windows, source, refresh time and separately reported project token counts. Existing local CLI/IDE logins are reused: Codex and Antigravity query their CLIs; Claude, Grok, Cursor and Gemini query the providers' usage endpoints. Credentials remain in memory and are not returned to the UI. Missing sign-ins, unavailable quotas and errors are explicit; token counts are never substituted for account percentages. Provider endpoint changes may require adapter updates. See [protocol acknowledgments](docs/THIRD_PARTY_NOTICES.md).
 
 ## Reading and usage
@@ -26,13 +29,13 @@ Working notes keep complete snapshots rather than the last few characters. Choos
 
 ## Updates
 
-Choose **App menu → Check for updates**. Installation is manual, verifies GitHub's SHA-256 asset digest, and restarts the app. Finish or cancel all work before updating. An upgrade from the Python app can use its existing update button to install the new executable.
+For the Store edition, use Microsoft Store to check for updates. For the stable portable edition, choose **App menu → Check for updates**. The portable updater verifies GitHub's SHA-256 asset digest. To update the preview, download the latest preview ZIP. Finish any active work before updating.
 
 ## Remote/mobile foundation
 
 The Rust engine exposes an authenticated, versioned HTTP/SSE interface on an ephemeral **loopback-only** port. Durable event IDs support replay after a client disconnect. See [runtime protocol](docs/runtime-api.md) and the [OpenAPI contract](docs/openapi.json).
 
-This release is a **Windows desktop application**. Mobile binaries, device pairing and Tailscale connectivity are not enabled yet. Those clients can later use the same protocol; installing v3 does not expose the machine remotely.
+The Store edition and the Windows preview include **App menu → Connect a phone** for optional browser pairing. The phone connects to the PC over a private network, such as a Tailscale connection configured by the user.
 
 ## Develop and verify
 
