@@ -406,6 +406,9 @@ pub struct Invite {
 pub async fn invite(State(s): State<Server>, Json(input): Json<Invite>) -> Reply {
     let mut settings = s.engine.settings.lock().unwrap().clone();
     settings.draft.clear();
+    settings.agent_profiles.retain(|profile| {
+        settings.coder.as_ref() == Some(&profile.name) || settings.reviewers.contains(&profile.name)
+    });
     settings.validate()?;
     let mut m = s.companion.state.lock().unwrap();
     if !m.config.enabled || !m.ready {
@@ -677,10 +680,13 @@ async fn read_file(
     Json(input): Json<File>,
 ) -> Reply {
     let device = c.device(&headers)?;
+    let mut profiles = c.engine.settings.lock().unwrap().agent_profiles.clone();
+    profiles.extend(device.settings.agent_profiles);
     let preview = tokio::task::spawn_blocking(move || {
         crate::files::read(
             &device.settings.folder,
             &device.settings.references,
+            &profiles,
             &input.target,
         )
     })
@@ -723,7 +729,15 @@ async fn events(
             let Ok(events)=c.engine.store.events(after) else { break; };
             for mut event in events {
                 after=event.id;
-                if event.job.is_empty() && event.kind=="limits" { event.folder=device.settings.folder.clone(); }
+                if event.job.is_empty() && event.kind=="limits" {
+                    if !event.agent.is_empty()
+                        && !crate::model::AGENTS.contains(&event.agent.as_str())
+                        && device.settings.agent_profile(&event.agent).is_none()
+                    {
+                        continue;
+                    }
+                    event.folder=device.settings.folder.clone();
+                }
                 if folder_key(&event.folder)==folder_key(&device.settings.folder) {
                     yield Ok::<_,Infallible>(SseEvent::default().id(after.to_string()).data(serde_json::to_string(&event).unwrap()));
                 }

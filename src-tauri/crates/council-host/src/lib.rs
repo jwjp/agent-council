@@ -1,4 +1,6 @@
 //! Desktop execution host; deliberately independent of Tauri and native UI libraries.
+mod agent_accounts;
+mod changes;
 pub mod companion;
 pub mod engine;
 pub mod files;

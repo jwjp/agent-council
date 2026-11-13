@@ -2,7 +2,7 @@
 import path from "node:path";
 import os from "node:os";
 
-export const runtimeRevision = 4;
+export const runtimeRevision = 13;
 export const exeSuffix = process.platform === "win32" ? ".exe" : "";
 
 export function hostDataDir(

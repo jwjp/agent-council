@@ -17,10 +17,11 @@ import {
   PlusSquare,
 } from "lucide-react";
 import { MarkdownContent } from "./markdown";
+import { ReportContent } from "./report-content";
 import { compactActivity, snapshotActivity } from "./companion-state";
 import { WorkflowProgress } from "./workflow-view";
 import { workflowProgress } from "./workflow";
-import { names, marks, type Snapshot, type Activity } from "./types";
+import { agentName, agentMark, type Snapshot, type Activity } from "./types";
 import {
   windows as quotaWindows,
   percent,
@@ -808,11 +809,11 @@ function CompanionApp() {
               <button
                 key={a}
                 className={view === a ? "active" : ""}
-                aria-label={names[a]}
+                aria-label={agentName(a, snapshot?.agent_labels)}
                 onClick={() => setView(a)}
               >
-                <span>{marks[a]}</span>
-                {names[a]}
+                <span>{agentMark(a)}</span>
+                {agentName(a, snapshot?.agent_labels)}
               </button>
             ))}
           </nav>
@@ -871,15 +872,15 @@ function CompanionApp() {
                   className={`phone-message ${m.role === "You" ? "from-you" : ""}`}
                 >
                   <div className="message-byline">
-                    <span>{marks[m.role] || "·"}</span>
+                    <span>{agentMark(m.role)}</span>
                     <strong>
                       {m.role === "You"
                         ? t("You", "나")
-                        : names[m.role] || m.role}
+                        : agentName(m.role, snapshot?.agent_labels)}
                     </strong>
                     {m.stage && <small>{m.stage}</small>}
                   </div>
-                  {markdown(m.text)}
+                  <ReportContent message={m} render={markdown} label={t("Review details", "검수 근거")} />
                 </article>
               ))
             )}
@@ -938,8 +939,8 @@ function CompanionApp() {
             <div className="agent-status-row">
               {participants.map((a) => (
                 <button key={a} onClick={() => setView(a)}>
-                  <span>{marks[a]}</span>
-                  <strong>{names[a]}</strong>
+                  <span>{agentMark(a)}</span>
+                  <strong>{agentName(a, snapshot?.agent_labels)}</strong>
                   <small>{statusText(a)}</small>
                 </button>
               ))}
@@ -959,7 +960,11 @@ function CompanionApp() {
                           minute: "2-digit",
                         })}
                       </small>
-                      <strong>{names[a.agent] || "Host"}</strong>
+                      <strong>
+                        {a.agent
+                          ? agentName(a.agent, snapshot?.agent_labels)
+                          : "Host"}
+                      </strong>
                       <span>{a.text}</span>
                     </li>
                   ))}
@@ -1224,7 +1229,7 @@ function CompanionApp() {
               return (
                 <div className="phone-quota" key={a}>
                   <strong>
-                    {marks[a]} {names[a]}
+                    {agentMark(a)} {agentName(a, snapshot?.agent_labels)}
                   </strong>
                   <span>
                     {data?.status === "stale"

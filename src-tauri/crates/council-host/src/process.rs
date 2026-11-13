@@ -470,6 +470,7 @@ impl Parsed {
 
 pub async fn run<F>(
     name: &str,
+    profile_dir: Option<&str>,
     prompt: &str,
     cwd: &Path,
     implement: bool,
@@ -484,12 +485,19 @@ where
     let mut command = Command::new(program);
     command
         .args(prefix)
-        .args(args(name, prompt, implement, full))
         .current_dir(cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    if let Some(config_dir) = profile_dir {
+        anyhow::ensure!(
+            Path::new(config_dir).is_dir(),
+            "The agent profile configuration folder is unavailable."
+        );
+        configure_profile(&mut command, name, config_dir);
+    }
+    command.args(args(name, prompt, implement, full));
     hidden(&mut command);
     #[cfg(unix)]
     command.process_group(0);
@@ -569,6 +577,29 @@ where
         );
     }
     Ok(parsed)
+}
+
+pub(crate) const CLAUDE_AUTH_OVERRIDES: &[&str] = &[
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "ANTHROPIC_PROFILE",
+    "ANTHROPIC_FEDERATION_RULE_ID",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+    "CLAUDE_CODE_USE_FOUNDRY",
+];
+
+pub(crate) fn configure_profile(command: &mut Command, provider: &str, config_dir: &str) {
+    let (home, overrides) = crate::agent_accounts::auth_environment(provider);
+    command.env(home, config_dir);
+    for key in overrides {
+        command.env_remove(key);
+    }
+    if provider == "codex" {
+        command.args(crate::agent_accounts::CODEX_FILE_AUTH);
+    }
 }
 
 fn emit_note<F: FnMut(&str, &str, Value)>(text: &str, emit: &mut F) {

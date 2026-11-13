@@ -6,10 +6,15 @@ interface Runtime {
   version: string;
 }
 let runtime: Runtime;
-export async function connect() {
-  runtime = isTauri()
-    ? await invoke<Runtime>("bootstrap")
-    : await fetch("/__council/runtime").then(async (r) => {
+let connecting: Promise<Runtime> | undefined;
+
+export class RuntimeConnectionError extends Error {}
+
+export function connect() {
+  if (connecting) return connecting;
+  const bootstrap = isTauri()
+    ? invoke<Runtime>("bootstrap")
+    : fetch("/__council/runtime").then(async (r) => {
         const v = await r.json();
         if (!r.ok)
           throw Error(
@@ -17,24 +22,65 @@ export async function connect() {
           );
         return v;
       });
-  return runtime;
+  connecting = bootstrap
+    .then((next) => (runtime = next))
+    .finally(() => {
+      connecting = undefined;
+    });
+  return connecting;
 }
 export async function api<T>(
   path: string,
   body?: unknown,
   method = body === undefined ? "GET" : "POST",
+  { retryOnDisconnect = false } = {},
 ): Promise<T> {
-  if (!runtime) await connect();
-  const response = await fetch(runtime.url + "/v1" + path, {
-    method,
-    headers: {
-      Authorization: "Bearer " + runtime.token,
-      "Content-Type": "application/json",
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(30000),
+  const bootstrap = async () => {
+    try {
+      return await connect();
+    } catch (error) {
+      if (!retryOnDisconnect) throw error;
+      throw new RuntimeConnectionError(
+        "Could not connect to the local engine.",
+        { cause: error },
+      );
+    }
+  };
+  const active = runtime ?? (await bootstrap());
+  const send = async (target: Runtime) => {
+    try {
+      const response = await fetch(target.url + "/v1" + path, {
+        method,
+        headers: {
+          Authorization: "Bearer " + target.token,
+          "Content-Type": "application/json",
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(30000),
+      });
+      return { response, raw: await response.text() };
+    } catch (error) {
+      if (!retryOnDisconnect) throw error;
+      throw new RuntimeConnectionError(
+        "The local engine connection was interrupted.",
+        { cause: error },
+      );
+    }
+  };
+  const attempt = await send(active).catch((error) => {
+    if (!(error instanceof RuntimeConnectionError)) throw error;
+    return undefined;
   });
-  const raw = await response.text();
+  // Only callers with a replay-safe operation opt in to a second send.
+  const { response, raw } =
+    !attempt || (retryOnDisconnect && attempt.response.status === 401)
+      ? await send(runtime && runtime !== active ? runtime : await bootstrap())
+      : attempt;
+  if (retryOnDisconnect && response.status === 401) {
+    throw new RuntimeConnectionError(
+      "The local engine rejected the connection.",
+    );
+  }
   let data;
   try {
     data = JSON.parse(raw);

@@ -47,7 +47,12 @@ fn target(raw: &str) -> Result<(String, Option<usize>)> {
     Ok((path, line.filter(|&n| n > 0)))
 }
 
-pub fn read(folder: &str, references: &[String], raw: &str) -> Result<Preview> {
+pub fn read(
+    folder: &str,
+    references: &[String],
+    profiles: &[crate::model::AgentProfile],
+    raw: &str,
+) -> Result<Preview> {
     let (link, line) = target(raw)?;
     let path = Path::new(&link);
     let candidates = if path.is_absolute() {
@@ -78,6 +83,23 @@ pub fn read(folder: &str, references: &[String], raw: &str) -> Result<Preview> {
     anyhow::ensure!(
         allowed,
         "This file is outside the project and reference folders."
+    );
+    anyhow::ensure!(
+        !crate::agent_accounts::PROVIDERS
+            .into_iter()
+            .flat_map(|provider| [
+                crate::agent_accounts::managed_root(provider),
+                crate::agent_accounts::default_dir(provider),
+            ])
+            .chain(
+                profiles
+                    .iter()
+                    .map(|profile| PathBuf::from(&profile.config_dir))
+            )
+            .any(|folder| folder
+                .canonicalize()
+                .is_ok_and(|root| path.starts_with(root))),
+        "Agent account folders are private."
     );
     const MAX: u64 = 512 * 1024;
     let mut bytes = Vec::new();
@@ -148,11 +170,11 @@ mod tests {
         std::fs::write(project.join("binary.dat"), [0, 1, 2, 3]).unwrap();
         let p = project.to_str().unwrap();
         let refs = vec![reference.to_string_lossy().into_owned()];
-        let preview = read(p, &refs, "한글.rs:2").unwrap();
+        let preview = read(p, &refs, &[], "한글.rs:2").unwrap();
         assert_eq!(preview.line, Some(2));
         assert!(preview.text.contains("둘째"));
-        assert!(read(p, &refs, "../outside.txt").is_err());
-        assert!(read(p, &refs, "binary.dat").is_err());
+        assert!(read(p, &refs, &[], "../outside.txt").is_err());
+        assert!(read(p, &refs, &[], "binary.dat").is_err());
         std::fs::write(
             project.join("long.txt"),
             (1..=7000)
@@ -161,11 +183,11 @@ mod tests {
                 .join("\n"),
         )
         .unwrap();
-        let long = read(p, &refs, "long.txt:6000").unwrap();
+        let long = read(p, &refs, &[], "long.txt:6000").unwrap();
         assert!(long.start_line > 1 && long.truncated);
         assert_eq!(long.text.split('\n').count(), 3000);
         assert!(long.text.contains("line 6000"));
-        assert!(read(p, &refs, "javascript:alert(1)").is_err());
+        assert!(read(p, &refs, &[], "javascript:alert(1)").is_err());
         assert!(root
             .canonicalize()
             .unwrap()

@@ -6,6 +6,20 @@ On the reported PC, explicit read-only checks returned Grok `1.0.77` from `.grok
 
 ## Sign in to the intended CLI
 
+### Use multiple Claude Code sign-ins
+
+Open **Agents → Claude accounts → Connect existing account**. Agent Council checks the default login, registered folders and common `.claude-*` folders in your home directory. Select the signed-in account or use **Choose a different folder** for another location. Choose it as lead or reviewer and save.
+
+For a fresh account, use **Sign in to a new account → Prepare login**. Windows generates a command for a fresh PowerShell window. macOS generates a command for Terminal's default zsh shell, and Linux generates the same POSIX shell syntax. The macOS/Linux command applies the account directory and environment changes inside a subshell. After the official sign-in completes, choose **Check sign-in → Connect**, then save. An unfinished login can be resumed from the discovered account list. New folders live under `claude-accounts` in the local app data directory. [Claude Code authentication commands](https://code.claude.com/docs/en/cli-reference)
+
+The desktop account list shows the email Claude Code reports for a signed-in Claude.ai session. An API-key session or a CLI response without an email can still show its authentication status. The app does not store the reported email in project data or return it to paired devices.
+
+Additional Claude sign-ins receive numbered names such as `Claude Code 2`. Use the details under a connected account to rename or disconnect it. Renaming preserves its participant ID and token totals. Disconnecting removes it from the team and keeps the CLI login files. Usage refresh uses the selected profile's OAuth data when available locally. Claude Code can also report limits during work. The usage panel shows one row per account and expands to show every reported window. If the profile's folder mapping changes or is removed, a phone using the old team needs to pair again before starting work.
+
+### Use multiple Codex sign-ins
+
+Open **Agents → Codex accounts** and follow the same connect or new sign-in steps. The app detects common `.codex-*` directories and lets you select another folder. An additional Codex profile uses its own `CODEX_HOME` and file-based CLI authentication. Sign-ins stored only in the system keyring cannot be imported as additional profiles. Usage is read through the Codex CLI using the same profile home. [Codex authentication](https://learn.chatgpt.com/docs/auth)
+
 In Windows PowerShell, use the installed Cursor wrapper explicitly:
 
 ```powershell

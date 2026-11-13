@@ -65,7 +65,7 @@
     "/state": {
       "get": {
         "operationId": "snapshot",
-        "description": "Settings, current project messages, latest job, bounded activity snapshot, usage, durable cursor and running_jobs count. Activity retains each agent's latest complete note and up to 40 events of each milestone/tool/error kind; full durable history remains available through SSE replay.",
+        "description": "Settings, current project messages, latest job, bounded activity snapshot, usage, durable cursor and running_jobs count. A council message can include report_summary as a prefix of its full Markdown text. Activity retains each agent's latest complete note and up to 40 events of each milestone/tool/error kind; full durable history remains available through SSE replay.",
         "responses": {
           "200": {
             "description": "Success"
@@ -118,31 +118,70 @@
                     "description": "Existing project directory"
                   },
                   "coder": {
-                    "type": [
-                      "string",
-                      "null"
-                    ],
-                    "enum": [
-                      "claude",
-                      "codex",
-                      "grok",
-                      "agy",
-                      "agent",
-                      "gemini",
-                      null
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "claude",
+                          "codex",
+                          "grok",
+                          "agy",
+                          "agent",
+                          "gemini"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^(claude|codex)-[a-z0-9][a-z0-9_-]{0,31}$"
+                      },
+                      {
+                        "type": "null"
+                      }
                     ]
                   },
                   "reviewers": {
                     "type": "array",
                     "uniqueItems": true,
                     "items": {
-                      "enum": [
-                        "claude",
-                        "codex",
-                        "grok",
-                        "agy",
-                        "agent",
-                        "gemini"
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "claude",
+                            "codex",
+                            "grok",
+                            "agy",
+                            "agent",
+                            "gemini"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^(claude|codex)-[a-z0-9][a-z0-9_-]{0,31}$"
+                        }
+                      ]
+                    }
+                  },
+                  "agent_profiles": {
+                    "type": "array",
+                    "description": "Additional Claude Code and Codex sign-ins. Configuration paths are local to the desktop and omitted from phone snapshots.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "pattern": "^(claude|codex)-[a-z0-9][a-z0-9_-]{0,31}$"
+                        },
+                        "config_dir": {
+                          "type": "string"
+                        },
+                        "display_name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "config_dir"
                       ]
                     }
                   },
@@ -183,6 +222,370 @@
         "responses": {
           "200": {
             "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{provider}/accounts": {
+      "parameters": [
+        {
+          "name": "provider",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "enum": [
+              "claude",
+              "codex"
+            ]
+          }
+        }
+      ],
+      "get": {
+        "operationId": "discoverAgentAccounts",
+        "responses": {
+          "200": {
+            "description": "Default, registered and discovered local accounts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "claude",
+                              "codex"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^(claude|codex)-[a-z0-9][a-z0-9_-]{0,31}$"
+                          }
+                        ]
+                      },
+                      "config_dir": {
+                        "type": "string"
+                      },
+                      "display_name": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "connected",
+                          "sign_in_required",
+                          "cli_unavailable",
+                          "check_failed"
+                        ]
+                      },
+                      "login_command": {
+                        "type": "string"
+                      },
+                      "login_shell": {
+                        "enum": [
+                          "powershell",
+                          "macos_terminal",
+                          "posix_terminal"
+                        ]
+                      },
+                      "account_email": {
+                        "type": "string",
+                        "description": "Claude.ai sign-in email, when reported. Desktop account endpoints only."
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "config_dir",
+                      "status"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{provider}/accounts/check": {
+      "parameters": [
+        {
+          "name": "provider",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "enum": [
+              "claude",
+              "codex"
+            ]
+          }
+        }
+      ],
+      "post": {
+        "operationId": "checkAgentAccount",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "config_dir": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "config_dir"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local agent account status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "claude",
+                            "codex"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^(claude|codex)-[a-z0-9][a-z0-9_-]{0,31}$"
+                        }
+                      ]
+                    },
+                    "config_dir": {
+                      "type": "string"
+                    },
+                    "display_name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "connected",
+                        "sign_in_required",
+                        "cli_unavailable",
+                        "check_failed"
+                      ]
+                    },
+                    "login_command": {
+                      "type": "string"
+                    },
+                    "login_shell": {
+                      "enum": [
+                        "powershell",
+                        "macos_terminal",
+                        "posix_terminal"
+                      ]
+                    },
+                    "account_email": {
+                      "type": "string",
+                      "description": "Claude.ai sign-in email, when reported. Desktop account endpoints only."
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "config_dir",
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{provider}/accounts/prepare": {
+      "parameters": [
+        {
+          "name": "provider",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "enum": [
+              "claude",
+              "codex"
+            ]
+          }
+        }
+      ],
+      "post": {
+        "operationId": "prepareAgentAccount",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Reuse to recover the same account folder after a lost response."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local agent account status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "claude",
+                            "codex"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^(claude|codex)-[a-z0-9][a-z0-9_-]{0,31}$"
+                        }
+                      ]
+                    },
+                    "config_dir": {
+                      "type": "string"
+                    },
+                    "display_name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "connected",
+                        "sign_in_required",
+                        "cli_unavailable",
+                        "check_failed"
+                      ]
+                    },
+                    "login_command": {
+                      "type": "string"
+                    },
+                    "login_shell": {
+                      "enum": [
+                        "powershell",
+                        "macos_terminal",
+                        "posix_terminal"
+                      ]
+                    },
+                    "account_email": {
+                      "type": "string",
+                      "description": "Claude.ai sign-in email, when reported. Desktop account endpoints only."
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "config_dir",
+                    "status"
+                  ]
+                }
+              }
+            }
           },
           "400": {
             "description": "Invalid request",
@@ -436,6 +839,125 @@
           },
           "409": {
             "description": "A different job is already running for this project"
+          }
+        }
+      }
+    },
+    "/jobs/{id}/changes": {
+      "get": {
+        "operationId": "jobChanges",
+        "description": "Read the bounded Git working-tree or supported project text-file comparison saved when a job ends. Returns null for jobs without a saved comparison.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved comparison or null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "available": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "enum": [
+                            "git",
+                            "folder"
+                          ]
+                        },
+                        "skipped": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "files": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "path": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "added",
+                                  "modified",
+                                  "deleted"
+                                ]
+                              },
+                              "patch": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "truncated": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "path",
+                              "kind",
+                              "patch",
+                              "truncated"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "available",
+                        "skipped",
+                        "files"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1018,31 +1540,70 @@
             "description": "Existing project directory"
           },
           "coder": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "claude",
-              "codex",
-              "grok",
-              "agy",
-              "agent",
-              "gemini",
-              null
+            "anyOf": [
+              {
+                "enum": [
+                  "claude",
+                  "codex",
+                  "grok",
+                  "agy",
+                  "agent",
+                  "gemini"
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^(claude|codex)-[a-z0-9][a-z0-9_-]{0,31}$"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "reviewers": {
             "type": "array",
             "uniqueItems": true,
             "items": {
-              "enum": [
-                "claude",
-                "codex",
-                "grok",
-                "agy",
-                "agent",
-                "gemini"
+              "anyOf": [
+                {
+                  "enum": [
+                    "claude",
+                    "codex",
+                    "grok",
+                    "agy",
+                    "agent",
+                    "gemini"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(claude|codex)-[a-z0-9][a-z0-9_-]{0,31}$"
+                }
+              ]
+            }
+          },
+          "agent_profiles": {
+            "type": "array",
+            "description": "Additional Claude Code and Codex sign-ins. Configuration paths are local to the desktop and omitted from phone snapshots.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^(claude|codex)-[a-z0-9][a-z0-9_-]{0,31}$"
+                },
+                "config_dir": {
+                  "type": "string"
+                },
+                "display_name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                }
+              },
+              "required": [
+                "name",
+                "config_dir"
               ]
             }
           },

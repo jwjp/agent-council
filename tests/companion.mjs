@@ -403,6 +403,68 @@ try {
   );
   await json(await p2.request("/companion/v1/logout", {}));
   await json(await p2.request("/companion/v1/state"), 401);
+  const profileDir = join(root, ".claude-jw");
+  mkdirSync(profileDir);
+  const desktop = (await local("/state")).settings;
+  await local(
+    "/settings",
+    {
+      ...desktop,
+      coder: "claude-jw",
+      reviewers: [],
+      agent_profiles: [
+        {
+          name: "claude-jw",
+          config_dir: profileDir,
+          display_name: "Initial Claude",
+        },
+      ],
+    },
+    "PUT",
+  );
+  const profilePhone = phone();
+  await pair(profilePhone, "Claude profile phone", true);
+  const profileState = await json(
+    await profilePhone.request("/companion/v1/state"),
+  );
+  assert.equal(profileState.settings.coder, "claude-jw");
+  assert.ok(profileState.agents.some((agent) => agent.id === "claude-jw"));
+  assert.deepEqual(profileState.settings.agent_profiles, []);
+  assert.equal(profileState.agent_labels["claude-jw"], "Initial Claude");
+  const profileTeam = (await local("/state")).settings;
+  await local(
+    "/settings",
+    {
+      ...profileTeam,
+      agent_profiles: profileTeam.agent_profiles.map((entry) => ({
+        ...entry,
+        display_name: "Renamed Claude",
+      })),
+    },
+    "PUT",
+  );
+  const renamed = await json(await profilePhone.request("/companion/v1/state"));
+  assert.equal(renamed.agent_labels["claude-jw"], "Renamed Claude");
+  await json(
+    await profilePhone.request("/companion/v1/jobs", {
+      request: "Verify renamed profile can still run",
+      request_id: "renamed-claude-profile",
+    }),
+  );
+  for (
+    let i = 0;
+    i < 100 && (await local("/state")).job.status === "running";
+    i++
+  )
+    await pause(100);
+  assert.equal((await local("/state")).job.status, "done");
+  await local("/settings", desktop, "PUT");
+  const changedTeam = await profilePhone.request("/companion/v1/jobs", {
+    request: "Check the project",
+    request_id: "changed-claude-profile",
+  });
+  const changedError = await json(changedTeam, 400);
+  assert.match(changedError.error, /Pair again/);
   await local("/companion", { enabled: false, origin, port }, "PUT");
   console.log(
     "PASS companion approval/replay, cookie separation, CSRF, view-only grant, project/file/event scope, per-device drafts/idempotency, job execution, revocation/SSE, credential digests and restart persistence",
@@ -416,5 +478,10 @@ try {
     }
   }
   assert.ok(root.startsWith(join(tmpdir(), "council-companion-test-")));
-  rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  rmSync(root, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 100,
+  });
 }

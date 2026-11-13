@@ -2,6 +2,12 @@
 param([Parameter(Mandatory)] [string] $PackageDirectory)
 
 $ErrorActionPreference = 'Stop'
+$sourceRoot = Split-Path -Parent $PSScriptRoot
+$expectedVersion = (Get-Content -Raw -LiteralPath (Join-Path $sourceRoot 'package.json') | ConvertFrom-Json).version
+$coreSource = Get-Content -Raw -LiteralPath (Join-Path $sourceRoot 'src-tauri/crates/council-core/src/lib.rs')
+$revisionMatch = [regex]::Match($coreSource, 'pub const RUNTIME_REVISION: u32 = (\d+);')
+if (!$revisionMatch.Success) { throw 'Cannot read the source runtime revision.' }
+$expectedRevision = [int]$revisionMatch.Groups[1].Value
 $directory = (Resolve-Path -LiteralPath $PackageDirectory).Path
 $identity = 'AgentCouncil.CompatibilityTrial'
 $registered = @(Get-AppxPackage -Name $identity)
@@ -66,7 +72,7 @@ function Read-Runtime($Package, [string] $Data) {
     $runtime = Wait-Trial 'isolated runtime descriptor' {
         try {
             $value = Get-Content -Raw -LiteralPath (Join-Path $Data 'runtime.json') | ConvertFrom-Json
-            if ([uri]::new($value.url).Host -eq '127.0.0.1' -and $value.version -eq '3.2.0-beta.3' -and $value.revision -eq 4) {
+            if ([uri]::new($value.url).Host -eq '127.0.0.1' -and $value.version -eq $expectedVersion -and $value.revision -eq $expectedRevision) {
                 $process = Find-TrialProcesses $Package | Where-Object Id -eq $value.pid
                 if ($process) { $value }
             }

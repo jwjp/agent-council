@@ -676,6 +676,18 @@ try {
   pass(
     "A lost job acknowledgement is confirmed from scoped host state without restoring or repeating submitted text",
   );
+  await expect.poll(async () => (await local("/state")).job?.status).toBe("done");
+  await input.fill("COMPACT_REPORT_FIXTURE 한 문장으로 알려줘.");
+  await phone.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(phone.getByText("The status changed to ready.", { exact: true })).toBeVisible({ timeout: 15000 });
+  const reviewDetails = phone.getByText("검수 근거", { exact: true });
+  const supportingEvidence = phone.getByText("The reviewer checked the file.", { exact: false });
+  await expect(reviewDetails).toBeVisible();
+  await expect(supportingEvidence).toBeHidden();
+  await screenshot(phone, ".runtime-test/phone-compact-report.png");
+  await reviewDetails.click();
+  await expect(supportingEvidence).toBeVisible();
+  pass("The phone keeps review evidence available under a short answer");
   await page
     .locator(".phone-device")
     .filter({ hasText: "Pocket review" })

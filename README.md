@@ -23,7 +23,13 @@ Open **Agents** to choose an optional lead agent and optional reviewers. The com
 
 The footer labels the period of the highest reported usage percentage (`5h`, `wk`, `mo` or a model group). The popover shows every reported window. A CLI's partial limit event preserves other known windows; lower stale snapshots for the same period are ignored. Failed refreshes retain the last known quota with an explicit stale label. Usage refreshes after work finishes. Cursor IDE quota access does not imply Cursor Agent CLI is signed in. Use `cursor-agent.cmd login` on Windows or `cursor-agent login` on macOS/Linux; Grok can also install the generic `agent` name. See [CLI troubleshooting](docs/CLI_TROUBLESHOOTING.md). Collision prevention and corrected UI commands ship in beta.2; the older beta.1 download is unchanged.
 
+In the current source build, open **Agents → Claude accounts** or **Codex accounts** to connect an existing CLI sign-in or prepare a separate login. Each account can lead or review and has its own results, project tokens and available account limits. The usage panel shows one row per account and expands to all reported limits. [Account setup](docs/CLI_TROUBLESHOOTING.md#use-multiple-claude-code-sign-ins)
+
 Working notes keep complete snapshots rather than the last few characters. Choose **Read full note** for Markdown, tables and clickable file references. Project/reference file links open a read-only preview at the specified `:line` or `#Lline`, including Windows paths. Previews cap rendering at 512 KiB and 3,000 lines, reject binary content and enforce configured folder boundaries. Final reports remain separate from bounded working notes.
+
+In the current source build, the final report includes the engine's counts of lead and individual reviewer responses. When a request explicitly asks for a short answer, the desktop and companion show the answer first and let the reader expand the review details.
+
+**Changes from this run** in the desktop final report opens a read-only file diff against the start of the request. Git projects use tracked and non-ignored untracked files. Other folders use supported source, documentation and configuration files and skip hidden entries, common generated folders, and nested repositories. Captures are bounded and can be partial or unavailable.
 
 ## Updates
 

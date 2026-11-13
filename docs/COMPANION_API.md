@@ -19,6 +19,10 @@ Project binding constrains gateway data access, event routing and the working di
 
 Snapshots contain the latest complete working note per agent and bounded phase/tool/error history; the full retained event history stays on the host. The browser applies note/phase/tool events directly and refreshes snapshots for messages, usage and job transitions, preserving newer streamed notes if an older snapshot response arrives late.
 
+Council messages for explicit short-answer requests can include `report_summary`, a prefix of the full Markdown `text`. The companion shows the prefix with expandable review details.
+
+Paired devices see display names for agent profiles in their selected team. Snapshots omit configuration paths. A display name change keeps the grant valid. If a selected profile's folder mapping changes, the device must pair again to start work with the current team.
+
 Static `/companion/` and `/assets/*` contain only browser application assets. API responses are not cacheable. Mutations require the exact configured Origin; requests with a different supplied Origin are rejected, including reads. No permissive CORS is installed.
 
 Current source also serves the public `/companion/manifest.webmanifest` (`application/manifest+json`) and three PNGs: `/companion/app-icon-192.png`, `/companion/app-icon-512.png`, `/companion/apple-touch-icon.png`. These exact static routes contain no account/project data. CSP permits same-origin manifests and retains same-origin-only scripts/styles; there is no service worker. The manifest ID/start/scope are `/companion/`, without any pairing fragment. This adds no REST operation or authentication change.

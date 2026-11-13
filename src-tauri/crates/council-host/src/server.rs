@@ -2,7 +2,7 @@ use crate::{engine::Engine, model::*};
 use anyhow::Result;
 use axum::{
     extract::{DefaultBodyLimit, Path, Query, Request, State},
-    http::{HeaderValue, Method, StatusCode},
+    http::{header, HeaderValue, Method, StatusCode},
     middleware::{self, Next},
     response::{
         sse::{Event as SseEvent, KeepAlive, Sse},
@@ -72,9 +72,19 @@ pub fn router(s: Server) -> Router {
         )
         .route("/v1/state", get(snapshot))
         .route("/v1/settings", axum::routing::put(settings))
+        .route("/v1/{provider}/accounts", get(agent_accounts))
+        .route(
+            "/v1/{provider}/accounts/check",
+            axum::routing::post(check_agent_account),
+        )
+        .route(
+            "/v1/{provider}/accounts/prepare",
+            axum::routing::post(prepare_agent_account),
+        )
         .route("/v1/draft", axum::routing::put(draft))
         .route("/v1/files/read", axum::routing::post(read_file))
         .route("/v1/jobs", axum::routing::post(start))
+        .route("/v1/jobs/{id}/changes", get(job_changes))
         .route("/v1/jobs/{id}/cancel", axum::routing::post(cancel))
         .route("/v1/events", get(events))
         .route("/v1/usage/refresh", axum::routing::post(refresh))
@@ -116,9 +126,66 @@ pub fn router(s: Server) -> Router {
 async fn snapshot(State(s): State<Server>) -> ApiResult {
     Ok(Json(s.engine.state()?))
 }
+async fn job_changes(
+    State(s): State<Server>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let id = uuid::Uuid::parse_str(&id)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "Invalid job ID.".into()))?;
+    let changes = s.engine.store.get(&format!("changes:{id}"))?;
+    Ok(([(header::CACHE_CONTROL, "no-store")], Json(changes)).into_response())
+}
 async fn settings(State(s): State<Server>, Json(config): Json<Settings>) -> ApiResult {
     s.engine.save_settings(config)?;
     Ok(Json(s.engine.state()?))
+}
+fn account_reply(value: impl serde::Serialize) -> Response {
+    ([(header::CACHE_CONTROL, "no-store")], Json(value)).into_response()
+}
+fn account_provider(provider: &str) -> Result<&str, ApiError> {
+    if crate::agent_accounts::PROVIDERS.contains(&provider) {
+        Ok(provider)
+    } else {
+        Err(ApiError(
+            StatusCode::NOT_FOUND,
+            "Account profiles are unavailable for this provider.".into(),
+        ))
+    }
+}
+async fn agent_accounts(
+    State(s): State<Server>,
+    Path(provider): Path<String>,
+) -> Result<Response, ApiError> {
+    let settings = s.engine.settings.lock().unwrap().clone();
+    Ok(account_reply(
+        crate::agent_accounts::discover(account_provider(&provider)?, settings).await,
+    ))
+}
+#[derive(Deserialize)]
+struct AgentAccountFolder {
+    config_dir: String,
+}
+async fn check_agent_account(
+    Path(provider): Path<String>,
+    Json(input): Json<AgentAccountFolder>,
+) -> Result<Response, ApiError> {
+    Ok(account_reply(
+        crate::agent_accounts::check(account_provider(&provider)?, &input.config_dir).await?,
+    ))
+}
+#[derive(Deserialize)]
+struct AgentAccountPreparation {
+    request_id: Option<String>,
+}
+async fn prepare_agent_account(
+    Path(provider): Path<String>,
+    input: Option<Json<AgentAccountPreparation>>,
+) -> Result<Response, ApiError> {
+    let id = input.as_ref().and_then(|input| input.request_id.as_deref());
+    Ok(account_reply(crate::agent_accounts::prepare(
+        account_provider(&provider)?,
+        id,
+    )?))
 }
 #[derive(Deserialize)]
 struct Maintenance {
@@ -153,7 +220,12 @@ struct FileLink {
 async fn read_file(State(s): State<Server>, Json(link): Json<FileLink>) -> ApiResult {
     let settings = s.engine.settings.lock().unwrap().clone();
     let preview = tokio::task::spawn_blocking(move || {
-        crate::files::read(&settings.folder, &settings.references, &link.target)
+        crate::files::read(
+            &settings.folder,
+            &settings.references,
+            &settings.agent_profiles,
+            &link.target,
+        )
     })
     .await
     .map_err(anyhow::Error::from)??;
@@ -297,6 +369,10 @@ pub async fn connect() -> Result<Runtime> {
         if runtime.version == VERSION && runtime.revision == RUNTIME_REVISION {
             return Ok(runtime);
         }
+        anyhow::ensure!(
+            runtime.revision <= RUNTIME_REVISION,
+            "A newer Agent Council engine is running. Open the newer app to reconnect."
+        );
         let snapshot: Value = reqwest::Client::new()
             .get(format!("{}/v1/state", runtime.url))
             .bearer_auth(&runtime.token)

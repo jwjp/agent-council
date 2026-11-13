@@ -39,6 +39,7 @@ import {
   CheckCheck,
   AlertCircle,
 } from "lucide-react";
+import { AgentAccounts } from "./agent-accounts";
 import { MarkdownContent } from "./markdown";
 import { CompanionSettings } from "./companion-settings";
 import { WorkflowProgress } from "./workflow-view";
@@ -54,10 +55,14 @@ import {
   subscribe,
 } from "./api";
 import {
-  agents,
-  colors,
-  marks,
-  names,
+  agentChoices,
+  agentColor,
+  agentMark,
+  agentName,
+  isAgent,
+  isAgentProfile,
+  accountProviders,
+  type AgentLabels,
   type Activity,
   type Message,
   type Settings,
@@ -71,6 +76,8 @@ import {
   quotaLabel,
 } from "./quotas";
 import { FilePreviewProvider, useFileLink } from "./file-preview";
+import { ReportChanges } from "./report-changes";
+import { ReportContent } from "./report-content";
 import { Usage, cursorCli } from "./usage-panel";
 
 type Translate = (en: string, ko: string) => string;
@@ -84,9 +91,9 @@ function AgentMark({
   return (
     <span
       className={"agent-mark " + (small ? "small" : "")}
-      style={{ "--agent": colors[agent] || "#80899a" } as CSSProperties}
+      style={{ "--agent": agentColor(agent) } as CSSProperties}
     >
-      {marks[agent] || "·"}
+      {agentMark(agent)}
     </span>
   );
 }
@@ -452,12 +459,11 @@ export default function App() {
         ]),
       ]
     : [];
+  const availableAgents = state ? agentChoices(state.settings) : [];
   const options = [
     ...new Set([
       ...participants,
-      ...(state?.messages || [])
-        .map((m) => m.role)
-        .filter((r) => agents.includes(r as (typeof agents)[number])),
+      ...(state?.messages || []).map((m) => m.role).filter(isAgent),
       ...(state?.settings.reviewers.length ? ["council"] : []),
     ]),
   ];
@@ -660,7 +666,7 @@ export default function App() {
                   {participants.map((a) => (
                     <div key={a}>
                       <AgentMark agent={a} small />
-                      <span>{names[a]}</span>
+                      <span>{agentName(a, state?.agent_labels)}</span>
                       <span className="team-role">
                         {a === state?.settings.coder
                           ? t("Lead", "담당")
@@ -915,7 +921,11 @@ export default function App() {
                         />
                       </div>
                     ) : (
-                      <Conversation messages={state.messages} t={t} />
+                      <Conversation
+                        messages={state.messages}
+                        labels={state.agent_labels}
+                        t={t}
+                      />
                     )}
                   </>
                 )}
@@ -935,7 +945,7 @@ export default function App() {
                             }}
                           >
                             <AgentMark agent={a} small />
-                            <span>{names[a]}</span>
+                            <span>{agentName(a, state?.agent_labels)}</span>
                             <span
                               className={
                                 "agent-state " +
@@ -1009,7 +1019,7 @@ export default function App() {
                                 : t("Execution permissions", "실행 권한")}
                             </header>
                             {chooser === "lead"
-                              ? [...agents, null].map((a) => (
+                              ? [...availableAgents, null].map((a) => (
                                   <button
                                     key={a || "none"}
                                     onClick={() => {
@@ -1027,7 +1037,7 @@ export default function App() {
                                     {a && <AgentMark agent={a} small />}
                                     <span>
                                       {a
-                                        ? names[a]
+                                        ? agentName(a, state?.agent_labels)
                                         : t("Review only", "검토만 진행")}
                                     </span>
                                     {state.settings.coder === a && (
@@ -1095,7 +1105,7 @@ export default function App() {
                           small
                         />
                         {state.settings.coder
-                          ? names[state.settings.coder]
+                          ? agentName(state.settings.coder, state?.agent_labels)
                           : t("Review only", "검토만 진행")}
                         <ChevronDown size={12} />
                       </button>
@@ -1187,7 +1197,8 @@ export default function App() {
             <ChevronDown size={11} />
           </button>
           <div className="quota-strip">
-            {agents.map((a) => {
+            {availableAgents.map((a) => {
+              const name = agentName(a, state?.agent_labels);
               const quota = windows(a, state?.limits[a]);
               const w = summaryWindow(quota);
               const meta = state?.limits[a] as
@@ -1196,9 +1207,11 @@ export default function App() {
                 <button
                   key={a}
                   className={meta?.status === "stale" ? "quota-is-stale" : ""}
-                  aria-label={names[a] + t(" usage", " 사용량")}
+                  aria-label={
+                    name + t(" usage", " 사용량")
+                  }
                   title={
-                    names[a] +
+                    name +
                     ": " +
                     (meta?.status === "stale"
                       ? t("Last known · ", "이전 조회값 · ")
@@ -1219,10 +1232,7 @@ export default function App() {
                 >
                   <AgentMark agent={a} small />
                   <span className="quota-name">
-                    {names[a]
-                      .replace(" Code", "")
-                      .replace(" Agent", "")
-                      .replace(" CLI", "")}
+                    {isAgentProfile(a) ? name : name.replace(/ (Code|Agent|CLI)$/, "")}
                   </span>
                   {w ? (
                     <>
@@ -1309,7 +1319,15 @@ export default function App() {
   );
 }
 
-function Conversation({ messages, t }: { messages: Message[]; t: Translate }) {
+function Conversation({
+  messages,
+  labels,
+  t,
+}: {
+  messages: Message[];
+  labels?: AgentLabels;
+  t: Translate;
+}) {
   const ref = useRef<HTMLDivElement>(null),
     follow = useRef(true);
   useLayoutEffect(() => {
@@ -1342,7 +1360,7 @@ function Conversation({ messages, t }: { messages: Message[]; t: Translate }) {
                 <strong>
                   {m.role === "council"
                     ? t("Council report", "최종 보고서")
-                    : names[m.role] || m.role}
+                    : agentName(m.role, labels)}
                 </strong>
                 {m.stage && <span>{stageLabel(m.stage, t)}</span>}
                 <button
@@ -1356,7 +1374,11 @@ function Conversation({ messages, t }: { messages: Message[]; t: Translate }) {
               {m.stage === "error" ? (
                 <AgentProblem message={m.text} agent={m.role} t={t} />
               ) : (
-                <Markdown text={m.text} />
+                <ReportContent
+                  message={m}
+                  render={(text) => <Markdown text={text} />}
+                  label={t("Review details", "검수 근거")}
+                />
               )}
             </article>
           ),
@@ -1412,7 +1434,7 @@ function AgentPane({
     .filter(
       (m) =>
         m.role === agent ||
-        m.role === (names[agent] || agent) ||
+        m.role === agentName(agent) ||
         (agent === "council" &&
           progress?.stage === "question" &&
           progress.members.includes(m.role)),
@@ -1444,13 +1466,25 @@ function AgentPane({
           data: { truncated: !archived },
         }
       : rawNote;
-  const scrollKey = log ? notes.at(-1)?.id : messages.length;
+  const reportView = agent === "council" && !log;
+  const changes = reportView && state.job && state.job.status !== "running" && (
+    <ReportChanges key={state.job.id} job={state.job.id} t={t} />
+  );
+  const compactReport = reportView && messages.some((m) => !!m.report_summary);
+  const scrollKey = log
+    ? notes.at(-1)?.id
+    : reportView
+      ? messages.at(-1)?.time
+      : messages.length;
   useLayoutEffect(() => {
-    if (follow.current && ref.current) {
+    if (reportView) {
+      if (ref.current) ref.current.scrollTop = 0;
+      setUnread(false);
+    } else if (follow.current && ref.current) {
       ref.current.scrollTop = ref.current.scrollHeight;
       setUnread(false);
     } else if (!log) setUnread(true);
-  }, [scrollKey, log, agent]);
+  }, [scrollKey, log, agent, reportView]);
   const active =
     state.job?.status === "running" &&
     last &&
@@ -1471,7 +1505,7 @@ function AgentPane({
             <option key={a} value={a}>
               {a === "council"
                 ? t("Council report", "최종 보고서")
-                : names[a] || a}
+                : agentName(a, state.agent_labels)}
             </option>
           ))}
         </select>
@@ -1510,7 +1544,7 @@ function AgentPane({
         className="pane-content scrollable"
         ref={ref}
         onScroll={() => {
-          if (ref.current)
+          if (!reportView && ref.current)
             follow.current =
               ref.current.scrollHeight -
                 ref.current.scrollTop -
@@ -1518,6 +1552,7 @@ function AgentPane({
               70;
         }}
       >
+        {!compactReport && changes}
         {log ? (
           <div className="activity-log">
             {notes.length ? (
@@ -1555,7 +1590,11 @@ function AgentPane({
               {m.stage === "error" ? (
                 <AgentProblem message={m.text} agent={agent} t={t} />
               ) : (
-                <Markdown text={m.text} />
+                <ReportContent
+                  message={m}
+                  render={(text) => <Markdown text={text} />}
+                  label={t("Review details", "검수 근거")}
+                />
               )}
             </article>
           ))
@@ -1583,8 +1622,9 @@ function AgentPane({
             </p>
           </div>
         )}
+        {compactReport && changes}
       </div>
-      {unread && !log && (
+      {unread && !log && !reportView && (
         <button
           className="new-results"
           onClick={() => {
@@ -1624,7 +1664,7 @@ function AgentPane({
       {expanded && note && (
         <Modal
           title={t("Working notes", "작업 노트")}
-          subtitle={`${names[agent] || agent} · ${stageLabel(note.stage, t)} · ${new Date(note.time).toLocaleTimeString()}`}
+          subtitle={`${agentName(agent, state.agent_labels)} · ${stageLabel(note.stage, t)} · ${new Date(note.time).toLocaleTimeString()}`}
           close={closeNote}
           wide
         >
@@ -1667,6 +1707,13 @@ function SettingsModal({
     [error, setError] = useState("");
   const update = (v: Partial<Settings>) =>
     setValue((old) => ({ ...old, ...v }));
+  const choices = agentChoices(value);
+  const labels = Object.fromEntries(
+    (value.agent_profiles ?? []).map((p) => [
+      p.name,
+      p.display_name ?? p.name,
+    ]),
+  );
   async function browse(reference = false) {
     try {
       const folder = await pickFolder();
@@ -1721,6 +1768,11 @@ function SettingsModal({
         <div className="settings-content scrollable">
           {tab === "agents" && (
             <>
+              <section className="agent-account-providers">
+                {accountProviders.map((provider) => (
+                  <AgentAccounts key={provider} provider={provider} value={value} update={update} t={t} />
+                ))}
+              </section>
               <section>
                 <h3>
                   {t("Lead agent", "담당 AI")}
@@ -1733,7 +1785,7 @@ function SettingsModal({
                   )}
                 </p>
                 <div className="agent-choices">
-                  {[...agents, null].map((a) => (
+                  {[...choices, null].map((a) => (
                     <button
                       className={
                         "agent-choice " + (value.coder === a ? "chosen" : "")
@@ -1752,7 +1804,9 @@ function SettingsModal({
                         <MessageSquare size={16} />
                       )}
                       <span>
-                        {a ? names[a] : t("Review only", "검수 전용")}
+                        {a
+                          ? agentName(a, labels)
+                          : t("Review only", "검수 전용")}
                       </span>
                       {value.coder === a && <Check size={14} />}
                     </button>
@@ -1773,10 +1827,12 @@ function SettingsModal({
                   )}
                 </p>
                 <div className="review-choices">
-                  {agents.map((a) => {
+                  {choices.map((a) => {
                     const selected = value.reviewers.includes(a),
                       coder = value.coder === a,
-                      installed = detected.find((d) => d.id === a)?.installed;
+                      installed = detected.find((d) => d.id === a)?.installed,
+                      newProfile =
+                        isAgentProfile(a) && installed === undefined;
                     return (
                       <button
                         key={a}
@@ -1794,13 +1850,20 @@ function SettingsModal({
                       >
                         <AgentMark agent={a} />
                         <div>
-                          <strong>{names[a]}</strong>
+                          <strong>{agentName(a, labels)}</strong>
                           <small>
                             {coder
                               ? t("Coding agent", "코딩 담당")
-                              : installed
-                                ? t("CLI detected", "CLI 감지됨")
-                                : t("CLI not found", "CLI 설치 필요")}
+                              : newProfile
+                                ? t("Ready to connect", "연결 준비됨")
+                                : isAgentProfile(a) && !installed
+                                  ? t(
+                                      "Check CLI and folder",
+                                      "CLI와 폴더 확인 필요",
+                                    )
+                                  : installed
+                                    ? t("CLI detected", "CLI 감지됨")
+                                    : t("CLI not found", "CLI 설치 필요")}
                           </small>
                         </div>
                         <span

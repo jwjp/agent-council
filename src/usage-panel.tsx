@@ -7,8 +7,15 @@ import {
   Copy,
   Clock3,
 } from "lucide-react";
-import { agents, names, marks, colors, type Snapshot } from "./types";
-import { windows, countdown, percent } from "./quotas";
+import {
+  agentChoices,
+  agentName,
+  agentMark,
+  agentColor,
+  agentProvider,
+  type Snapshot,
+} from "./types";
+import { windows, countdown, percent, summaryWindow } from "./quotas";
 import { external } from "./api";
 // The Windows installer supplies .cmd/.ps1 shims; Bash may only resolve the
 // colliding Grok agent.exe when an extension is omitted.
@@ -68,8 +75,8 @@ export function Usage({
           <strong>{t("Account usage", "계정 사용량")}</strong>
           <p>
             {t(
-              "Used quota · Existing local sign-ins",
-              "계정 한도 사용률 · 기존 로그인 기준",
+              "Highest reported usage per account",
+              "계정별로 가장 많이 사용한 한도를 표시합니다.",
             )}
           </p>
         </div>
@@ -97,12 +104,28 @@ export function Usage({
         </button>
       </header>
       <div className="usage-scroll scrollable">
-        {agents.map((a) => {
+        <div className="usage-columns" aria-hidden="true">
+          <span>{t("Account", "계정")}</span>
+          <span>{t("Used", "사용률")}</span>
+          <span>{t("Resets in", "초기화")}</span>
+        </div>
+        {agentChoices(state.settings).map((a) => {
           const ws = windows(a, state.limits[a]),
+            summary = summaryWindow(ws),
             meta = (state.limits[a] || {}) as Meta,
             u = state.usage?.[a],
             expanded = detail === a,
             stale = meta.status === "stale";
+          const status =
+            meta.refreshing || meta.status === "loading"
+              ? t("Checking…", "조회 중…")
+              : meta.status === "signed_out"
+                ? t("Sign in", "로그인 필요")
+                : meta.status === "unlimited"
+                  ? t("Unlimited", "무제한")
+                  : meta.status === "cli_only"
+                    ? t("Awaiting CLI", "CLI 보고 대기")
+                    : t("Unavailable", "조회 불가");
           return (
             <div
               className={`usage-agent ${expanded ? "is-expanded" : ""} ${stale ? "is-stale" : ""}`}
@@ -113,70 +136,88 @@ export function Usage({
                 aria-expanded={expanded}
                 onClick={() => setDetail(expanded ? "" : a)}
               >
-                <span className="agent-mark small" style={{ color: colors[a] }}>
-                  {marks[a]}
+                <span className="usage-account">
+                  <span
+                    className="agent-mark small"
+                    style={{ color: agentColor(a) }}
+                  >
+                    {agentMark(a)}
+                  </span>
+                  <strong title={agentName(a, state.agent_labels)}>
+                    {agentName(a, state.agent_labels)}
+                  </strong>
                 </span>
-                <strong>{names[a]}</strong>
-                <span className="grow" />
-                {meta.refreshing ? (
-                  <RefreshCw size={11} className="spin" />
-                ) : stale ? (
-                  <span className="quota-stale">
-                    {t("Last known", "이전 조회값")}
-                  </span>
-                ) : !ws.length ? (
-                  <span className="quota-empty">
-                    {meta.status === "loading"
-                      ? t("Checking…", "조회 중…")
-                      : meta.status === "signed_out"
-                        ? t("Sign in", "로그인 필요")
-                        : meta.status === "unlimited"
-                          ? "∞"
-                          : t("Unavailable", "조회 불가")}
-                  </span>
-                ) : null}
+                {summary ? (
+                  <>
+                    <span className="usage-reading" title={summary.label}>
+                      <span className="window-meter" aria-hidden="true">
+                        <i
+                          className={summary.used >= 85 ? "high" : ""}
+                          style={{ width: `${summary.used}%` }}
+                        />
+                      </span>
+                      <strong>{percent(summary.used)}</strong>
+                    </span>
+                    <span className={stale ? "quota-stale" : "usage-reset"}>
+                      {stale
+                        ? t("Last known", "이전 조회값")
+                        : countdown(summary.reset) || "—"}
+                    </span>
+                  </>
+                ) : (
+                  <span className="quota-empty">{status}</span>
+                )}
                 <ChevronRight size={13} className={expanded ? "rotate" : ""} />
               </button>
-              <div className={expanded ? "usage-detail" : "usage-summary"}>
-                {ws.map((w, i) => (
-                  <div className="usage-window" key={i}>
-                    <div className="usage-window-name" title={w.label}>
-                      {w.label}
-                    </div>
-                    <div className="window-meter">
-                      <i
-                        className={w.used >= 85 ? "high" : ""}
-                        style={{ width: `${w.used}%` }}
-                      />
-                    </div>
-                    <strong>
-                      {percent(w.used)} <span>{t("used", "사용")}</span>
-                    </strong>
-                    <small
-                      title={
-                        w.reset ? new Date(w.reset * 1000).toLocaleString() : ""
-                      }
-                    >
-                      <Clock3 size={10} />
-                      {w.reset
-                        ? countdown(w.reset)
-                        : t("Reset not reported", "초기화 시각 미제공")}
-                    </small>
-                    {expanded && (
+              {expanded && (
+                <div className="usage-detail">
+                  {ws.map((w, i) => (
+                    <div className="usage-window" key={i}>
+                      <div className="usage-window-name" title={w.label}>
+                        {w.label}
+                      </div>
+                      <div className="window-meter">
+                        <i
+                          className={w.used >= 85 ? "high" : ""}
+                          style={{ width: `${w.used}%` }}
+                        />
+                      </div>
+                      <strong>
+                        {percent(w.used)} <span>{t("used", "사용")}</span>
+                      </strong>
+                      <small
+                        title={
+                          w.reset
+                            ? new Date(w.reset * 1000).toLocaleString()
+                            : ""
+                        }
+                      >
+                        <Clock3 size={10} />
+                        {w.reset
+                          ? countdown(w.reset)
+                          : t("Reset not reported", "초기화 시각 미제공")}
+                      </small>
                       <p className="window-left">
                         {percent(100 - w.used)} {t("remaining", "남음")}
                         {w.reset &&
                           ` · ${new Date(w.reset * 1000).toLocaleString()}`}
                       </p>
-                    )}
-                  </div>
-                ))}
-                {expanded && (
+                    </div>
+                  ))}
                   <>
-                    {meta.message && (
-                      <p className={stale ? "usage-warning" : "usage-help"}>
-                        {meta.message}
+                    {meta.status === "cli_only" ? (
+                      <p className="usage-help">
+                        {t(
+                          "This login does not expose local OAuth credentials for a direct lookup. Limits will appear if Claude Code reports them during a run with this account.",
+                          "이 로그인은 직접 조회에 필요한 로컬 OAuth 정보를 제공하지 않습니다. 이 계정으로 실행할 때 Claude Code가 한도를 보고하면 표시합니다.",
+                        )}
                       </p>
+                    ) : (
+                      meta.message && (
+                        <p className={stale ? "usage-warning" : "usage-help"}>
+                          {meta.message}
+                        </p>
+                      )
                     )}
                     {a === "agent" && (
                       <p className="usage-help">
@@ -190,7 +231,9 @@ export function Usage({
                       <span>
                         {meta.auth_source ||
                           meta.source ||
-                          t("Local sign-in", "기존 로그인")}
+                          (agentProvider(a) === "claude" && a !== "claude"
+                            ? "Claude Code CLI"
+                            : t("Local sign-in", "기존 로그인"))}
                       </span>
                       {meta.updated_at && (
                         <time>
@@ -214,38 +257,40 @@ export function Usage({
                         {u?.output_tokens?.toLocaleString() ?? "—"}
                       </strong>
                     </div>
-                    <div className="usage-actions">
-                      <button
-                        title={login[a]}
-                        onClick={() =>
-                          void navigator.clipboard
-                            .writeText(login[a])
-                            .then(() => setCopied(a))
-                        }
-                      >
-                        <Copy size={12} />
-                        {copied === a
-                          ? t("Copied", "복사됨")
-                          : t("Copy sign-in command", "로그인 명령 복사")}
-                      </button>
-                      {links[a] && (
-                        <button onClick={() => void external(links[a])}>
-                          {t("Provider usage", "제공사 사용량")}
-                          <ArrowUpRight size={12} />
+                    {login[a] && (
+                      <div className="usage-actions">
+                        <button
+                          title={login[a]}
+                          onClick={() =>
+                            void navigator.clipboard
+                              .writeText(login[a])
+                              .then(() => setCopied(a))
+                          }
+                        >
+                          <Copy size={12} />
+                          {copied === a
+                            ? t("Copied", "복사됨")
+                            : t("Copy sign-in command", "로그인 명령 복사")}
                         </button>
-                      )}
-                    </div>
+                        {links[a] && (
+                          <button onClick={() => void external(links[a])}>
+                            {t("Provider usage", "제공사 사용량")}
+                            <ArrowUpRight size={12} />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
       <footer>
         {t(
-          "Percentages are account limits, not project tokens. Click an agent for details.",
-          "%는 계정 한도 사용률입니다. 에이전트를 누르면 출처와 프로젝트 토큰을 볼 수 있습니다.",
+          "Select an account for all limits and project tokens.",
+          "계정을 선택하면 전체 한도와 프로젝트 토큰을 볼 수 있습니다.",
         )}
       </footer>
       {error && <p className="danger-text">{error}</p>}

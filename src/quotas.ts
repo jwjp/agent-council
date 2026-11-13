@@ -65,7 +65,7 @@ export function windows(agent: string, data: unknown): WindowUsage[] {
         );
     }
   }
-  if (agent === "claude") {
+  if (agent === "claude" || agent.startsWith("claude-")) {
     for (const [key, w] of Object.entries(
       value.unifiedWindows || { [value.rateLimitType]: value },
     ) as [string, V][]) {

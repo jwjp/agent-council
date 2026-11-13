@@ -6,8 +6,11 @@ export const agents = [
   "agent",
   "gemini",
 ] as const;
-export type Agent = (typeof agents)[number];
-export const names: Record<string, string> = {
+export const accountProviders = ["claude", "codex"] as const;
+export type AccountProvider = (typeof accountProviders)[number];
+export type AgentProfileName = `${AccountProvider}-${string}`;
+export type Agent = (typeof agents)[number] | AgentProfileName;
+const names: Record<string, string> = {
   claude: "Claude Code",
   codex: "Codex",
   grok: "Grok",
@@ -18,7 +21,7 @@ export const names: Record<string, string> = {
   You: "You",
   system: "Agent Council",
 };
-export const marks: Record<string, string> = {
+const marks: Record<string, string> = {
   claude: "✳",
   codex: "◎",
   grok: "𝕏",
@@ -27,7 +30,7 @@ export const marks: Record<string, string> = {
   gemini: "✦",
   council: "✧",
 };
-export const colors: Record<string, string> = {
+const colors: Record<string, string> = {
   claude: "#bf775e",
   codex: "#508b78",
   grok: "#737984",
@@ -36,10 +39,46 @@ export const colors: Record<string, string> = {
   gemini: "#8a78d6",
   council: "#6b64c4",
 };
+export function isAgentProfile(agent: string): agent is AgentProfileName {
+  return /^(claude|codex)-[a-z0-9][a-z0-9_-]{0,31}$/.test(agent);
+}
+export function agentProvider(agent: string) {
+  return isAgentProfile(agent) ? (agent.split("-", 1)[0] as AccountProvider) : agent;
+}
+export function isAgent(agent: string): agent is Agent {
+  return (
+    (agents as readonly string[]).includes(agent) || isAgentProfile(agent)
+  );
+}
+export type AgentLabels = Record<string, string>;
+export function agentName(agent: string, labels?: AgentLabels) {
+  if (labels && Object.hasOwn(labels, agent)) return labels[agent];
+  return Object.hasOwn(names, agent) ? names[agent] : agent;
+}
+export function agentMark(agent: string) {
+  const id = agentProvider(agent);
+  return Object.hasOwn(marks, id) ? marks[id] : "·";
+}
+export function agentColor(agent: string) {
+  const id = agentProvider(agent);
+  return Object.hasOwn(colors, id) ? colors[id] : "#80899a";
+}
+export function agentChoices(settings: Settings): Agent[] {
+  return [
+    ...agents,
+    ...(settings.agent_profiles ?? []).map(({ name }) => name),
+  ];
+}
+export interface AgentProfile {
+  name: AgentProfileName;
+  config_dir: string;
+  display_name?: string;
+}
 export interface Settings {
   folder: string;
   coder: Agent | null;
   reviewers: Agent[];
+  agent_profiles?: AgentProfile[];
   references: string[];
   language: string;
   appearance: "light" | "dark" | "system";
@@ -49,6 +88,7 @@ export interface Settings {
 export interface Message {
   role: string;
   text: string;
+  report_summary?: string;
   stage: string;
   time: string;
 }
@@ -75,6 +115,7 @@ export interface Snapshot {
   settings: Settings;
   messages: Message[];
   agents: { id: Agent; installed: boolean }[];
+  agent_labels?: AgentLabels;
   job: Job | null;
   cursor: number;
   draft: string;

@@ -158,6 +158,7 @@ impl Store {
         let message = Message {
             role: "You".into(),
             text: job.request.clone(),
+            report_summary: None,
             stage: String::new(),
             time: job.time.clone(),
         };
@@ -237,16 +238,16 @@ impl Store {
     pub fn snapshot_job_events(&self, job: &str) -> Result<Vec<Event>> {
         let db = self.0.lock().unwrap();
         let mut rows = Vec::new();
-        let mut notes=db.prepare("SELECT id,value FROM events WHERE json_extract(value,'$.job')=? AND json_extract(value,'$.kind')='note' AND json_extract(value,'$.agent')=? ORDER BY id DESC LIMIT 1")?;
-        for agent in AGENTS {
-            rows.extend(
-                notes
-                    .query_map(params![job, agent], |r| {
-                        Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
-                    })?
-                    .collect::<rusqlite::Result<Vec<_>>>()?,
-            );
-        }
+        let mut notes = db.prepare(
+            "SELECT id,value FROM events WHERE id IN (
+            SELECT MAX(id) FROM events WHERE json_extract(value,'$.job')=?
+            AND json_extract(value,'$.kind')='note' GROUP BY json_extract(value,'$.agent'))",
+        )?;
+        rows.extend(
+            notes
+                .query_map([job], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?,
+        );
         let mut activity=db.prepare("SELECT id,value FROM events WHERE json_extract(value,'$.job')=? AND json_extract(value,'$.kind')=? ORDER BY id DESC LIMIT 40")?;
         for kind in ["workflow", "phase", "tool", "error", "done"] {
             rows.extend(

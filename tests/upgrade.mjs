@@ -182,7 +182,7 @@ try {
       return false;
     }
   }, "old isolated host");
-  assert.equal(runtime.revision, runtimeRevision);
+  assert.ok(runtime.revision <= runtimeRevision, "Old host revision exceeds this checkout");
   const oldVersion = runtime.version,
     oldPid = runtime.pid;
   port = await new Promise((done, fail) => {
@@ -267,7 +267,7 @@ try {
     "upgraded gateway readiness",
   );
   const after = await local("/state");
-  assert.deepEqual(after.settings, before.settings);
+  assert.deepEqual(after.settings, { agent_profiles: [], ...before.settings });
   assert.deepEqual(after.messages, before.messages);
   assert.deepEqual(after.usage, before.usage);
   assert.deepEqual(after.job, before.job);

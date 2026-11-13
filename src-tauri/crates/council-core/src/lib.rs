@@ -4,7 +4,7 @@ use serde_json::Value;
 
 pub const AGENTS: [&str; 6] = ["codex", "claude", "agy", "grok", "agent", "gemini"];
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const RUNTIME_REVISION: u32 = 4;
+pub const RUNTIME_REVISION: u32 = 13;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Runtime {
@@ -20,6 +20,8 @@ pub struct Runtime {
 pub struct Message {
     pub role: String,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_summary: Option<String>,
     #[serde(default)]
     pub stage: String,
     #[serde(default)]

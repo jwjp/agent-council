@@ -14,8 +14,10 @@ import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
 const root = mkdtempSync(join(tmpdir(), "council-ui-test-")),
   project = join(root, "project"),
-  bin = join(root, "bin");
+  bin = join(root, "bin"),
+  data = join(root, "data");
 mkdirSync(project);
+mkdirSync(data);
 writeFileSync(join(project, "main.rs"), "fn main() {}\n// 한글 파일 내용\n");
 mkdirSync(bin);
 let web, browser, runtime;
@@ -44,7 +46,7 @@ try {
   ])
     copyFileSync(join(bin, "fixture.exe"), join(bin, a + ".exe"));
   writeFileSync(
-    join(root, "settings.json"),
+    join(data, "settings.json"),
     JSON.stringify({
       folder: project,
       coder: "claude",
@@ -55,7 +57,7 @@ try {
   );
   const env = {
     ...process.env,
-    AGENT_COUNCIL_DATA: root,
+    AGENT_COUNCIL_DATA: data,
     AGENT_COUNCIL_AUTH_HOME: root,
     CLAUDE_CONFIG_DIR: join(root, ".claude"),
     GROK_HOME: join(root, ".grok"),
@@ -131,7 +133,7 @@ try {
   pass(
     "Windows packages show Store update guidance and no portable install action",
   );
-  runtime = JSON.parse(readFileSync(join(root, "runtime.json"), "utf8"));
+  runtime = JSON.parse(readFileSync(join(data, "runtime.json"), "utf8"));
   const req = async (path, body, method = body ? "POST" : "GET") => {
     const r = await fetch(runtime.url + "/v1" + path, {
       method,
@@ -173,8 +175,144 @@ try {
   await expect(
     page.getByRole("heading", { name: /^Lead agent/ }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Close", exact: true }).click();
-  pass("Agents opens the dedicated team editor");
+  const profileDir = join(root, ".claude-studio");
+  mkdirSync(profileDir);
+  writeFileSync(join(profileDir, "fixture-signed-in"), "");
+  await page.getByText("Claude accounts", { exact: true }).click();
+  const accountPanel = page.locator(".claude-accounts");
+  await expect(
+    accountPanel.getByText("Signed in", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    accountPanel.getByText("default-fixture@example.invalid", { exact: true }),
+  ).toBeVisible();
+  await accountPanel
+    .getByRole("button", { name: "Connect existing account", exact: true })
+    .click();
+  await expect(accountPanel.getByText("studio", { exact: true })).toBeVisible();
+  await expect(
+    accountPanel.getByText("extra-fixture@example.invalid", { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({ path: ".runtime-test/ui-claude-accounts.png" });
+  await accountPanel
+    .getByRole("button", { name: "Connect", exact: true })
+    .click();
+  await page.locator(".agent-choice").filter({ hasText: "Claude Code 2" }).click();
+  await expect(
+    page.locator(".review-choice").filter({ hasText: "Claude Code 2" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Claude Code 2 usage", exact: true }).locator(".quota-name"),
+  ).toHaveText("Claude Code 2");
+  const profileId = (await req("/state")).settings.coder;
+  assert.match(profileId, /^claude-[0-9a-f]{32}$/);
+  assert.equal((await req("/state")).agent_labels[profileId], "Claude Code 2");
+  pass("Agents discovers and connects an existing Claude sign-in");
+  await page.getByRole("button", { name: "Agents", exact: true }).click();
+  await accountPanel.getByText("Claude accounts", { exact: true }).click();
+  await expect(
+    accountPanel.getByText("extra-fixture@example.invalid", { exact: true }),
+  ).toBeVisible();
+  await expect(accountPanel.getByText("Claude Code 2", { exact: true })).toBeVisible();
+  await page.screenshot({ path: ".runtime-test/ui-claude-profile-name.png" });
+  await accountPanel.getByText("Claude Code 2", { exact: true }).click();
+  await accountPanel
+    .getByRole("button", { name: "Rename", exact: true })
+    .click();
+  await accountPanel.getByLabel("Display name").fill("Studio Claude");
+  await accountPanel.getByRole("button", { name: "Done", exact: true }).click();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Studio Claude usage", exact: true }),
+  ).toBeVisible();
+  assert.equal((await req("/state")).settings.coder, profileId);
+  pass(
+    "Renaming a Claude account preserves its participant ID and selected role",
+  );
+  await page.getByRole("button", { name: "Agents", exact: true }).click();
+  await accountPanel.getByText("Claude accounts", { exact: true }).click();
+  await accountPanel
+    .getByRole("button", { name: "Sign in to a new account", exact: true })
+    .click();
+  const prepareRequests = [];
+  let lostPreparation;
+  await page.route("**/v1/claude/accounts/prepare", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    prepareRequests.push(route.request().postDataJSON());
+    if (prepareRequests.length === 1) {
+      const response = await route.fetch();
+      lostPreparation = await response.json();
+      await route.abort("connectionreset");
+    } else {
+      await route.continue();
+    }
+  });
+  const prepared = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/v1/claude/accounts/prepare") && response.ok(),
+  );
+  await accountPanel
+    .getByRole("button", { name: "Prepare login", exact: true })
+    .click();
+  const pending = await (await prepared).json();
+  await page.unroute("**/v1/claude/accounts/prepare");
+  assert.equal(prepareRequests.length, 2);
+  assert.match(prepareRequests[0].request_id, /^[a-f0-9-]{36}$/);
+  assert.deepEqual(prepareRequests[1], prepareRequests[0]);
+  assert.deepEqual(pending, lostPreparation);
+  pass(
+    "Claude login preparation recovers a lost response without duplicating the account folder",
+  );
+  await expect(
+    accountPanel.getByRole("button", {
+      name: "Copy login command",
+      exact: true,
+    }),
+  ).toBeVisible();
+  const checkLogin = async (status) => {
+    const checked = page.waitForResponse((response) =>
+      response.url().endsWith("/v1/claude/accounts/check"),
+    );
+    await accountPanel
+      .getByRole("button", { name: "Check sign-in", exact: true })
+      .click();
+    const response = await checked;
+    const result = await response.json();
+    assert.equal(response.status(), 200, JSON.stringify(result));
+    assert.equal(result.status, status);
+  };
+  await checkLogin("sign_in_required");
+  writeFileSync(join(pending.config_dir, "fixture-signed-in"), "");
+  await checkLogin("connected");
+  await expect(
+    accountPanel
+      .locator(".claude-account-connect")
+      .getByText("extra-fixture@example.invalid", { exact: true }),
+  ).toBeVisible();
+  await accountPanel
+    .getByRole("button", { name: "Connect", exact: true })
+    .click();
+  await page.locator(".agent-choice").filter({ hasText: "Codex" }).click();
+  await page
+    .locator(".review-choice")
+    .filter({ hasText: "Claude Code 3" })
+    .click();
+  for (const name of ["Studio Claude", "Claude Code 3"]) {
+    const row = accountPanel
+      .locator("details.claude-account-row")
+      .filter({ has: page.getByText(name, { exact: true }) });
+    await row.getByText(name, { exact: true }).click();
+    await row.getByRole("button", { name: "Disconnect", exact: true }).click();
+  }
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect
+    .poll(async () => (await req("/state")).settings.agent_profiles)
+    .toEqual([]);
+  assert.ok(!(await req("/state")).settings.reviewers.includes(pending.name));
+  pass(
+    "Agents prepares a separate login and disconnects accounts without leaving a selected role",
+  );
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(
     page.getByRole("dialog", { name: "Settings", exact: true }),
@@ -288,6 +426,9 @@ try {
   pass(
     "New discussion results do not pull a reader away from an earlier review",
   );
+  const git = spawnSync("git", ["init", "-q"], { cwd: project, encoding: "utf8" });
+  assert.equal(git.status, 0, git.stderr);
+  writeFileSync(join(project, "fixture-implementation.txt"), "before this run\n");
   await page.locator(".composer textarea").fill("IMPLEMENT_REVIEW_FIX");
   await page.locator(".composer textarea").press("Enter");
   await expect(page.locator(".current-request")).toContainText(
@@ -301,12 +442,23 @@ try {
   );
   assert.equal(s.messages.filter((m) => m.stage === "refinement").length, 1);
   assert.equal(s.messages.filter((m) => m.stage === "verification").length, 2);
-  await expect(
-    page.locator(".pane-report").filter({ hasText: /Final report/i }),
-  ).toBeVisible();
+  const finalReport = page.locator(".pane-report").filter({ hasText: /Final report/i });
+  await expect(finalReport).toBeVisible();
+  await expect(finalReport).toContainText(
+    "Lead 1/1 responded · Individual review 2/2 responded",
+  );
+  await page.screenshot({ path: ".runtime-test/ui-report-participation.png" });
   pass(
     "Real UI runs lead → parallel review → one correction → recheck → conference → report",
   );
+  await page.getByText("Changes from this run", { exact: true }).click();
+  await page.getByRole("button", { name: /fixture-implementation.txt Modified/ }).click();
+  const diff = page.getByLabel("File diff", { exact: true });
+  await expect(diff).toContainText("-before this run");
+  await expect(diff).toContainText("+corrected");
+  await page.screenshot({ path: ".runtime-test/ui-report-diff.png" });
+  await page.getByText("Changes from this run", { exact: true }).click();
+  pass("The final report opens a diff against the actual pre-job working file");
   await page
     .locator(".agent-pane")
     .first()
@@ -380,9 +532,24 @@ try {
       ],
       source: "Test fixture",
     };
+    data.settings.agent_profiles = Array.from({ length: 4 }, (_, i) => ({
+      name: `claude-quota-${i}`,
+      config_dir: project,
+      display_name: `Claude account ${i + 1}`,
+    }));
+    for (const profile of data.settings.agent_profiles)
+      data.agent_labels = {
+        ...data.agent_labels,
+        [profile.name]: profile.display_name,
+      };
+    data.limits["claude-quota-0"] = { status: "cli_only" };
     const report = data.messages.findLast((m) => m.role === "council");
     report.text =
-      "# Scrollable review\n\n| File | Finding |\n| --- | --- |\n" +
+      "# Scrollable review\n\n" +
+      "- **Changes:** Added the health response.\n" +
+      "- **Verification:** Claude Code 2 ran the tests.\n" +
+      "- **Review:** Optional suggestions deferred.\n\n" +
+      "| File | Finding |\n| --- | --- |\n" +
       Array.from(
         { length: 80 },
         (_, i) => `| File ${i} | Reviewed item ${i} |`,
@@ -393,6 +560,28 @@ try {
   await expect(
     page.locator(".quota-strip").getByRole("button", { name: /Claude Code/ }),
   ).toContainText("79%");
+  await page.locator(".usage-toggle").click();
+  const usage = page.getByRole("region", { name: "Account usage" });
+  await expect(usage.locator(".usage-agent-heading")).toHaveCount(10);
+  await expect(usage.locator(".usage-detail")).toHaveCount(0);
+  await expect(
+    usage.getByRole("button", { name: /Claude Code/ }),
+  ).toContainText("79%");
+  await expect(
+    usage.getByRole("button", { name: /Claude account 1/ }),
+  ).toContainText("Awaiting CLI");
+  const reading = usage.getByRole("button", { name: /Claude Code/ }).locator(".usage-reading");
+  const meter = await reading.locator(".window-meter").boundingBox();
+  const rate = await reading.locator("strong").boundingBox();
+  assert.ok(meter && rate);
+  assert.ok(Math.abs(meter.y + meter.height / 2 - rate.y - rate.height / 2) < 2);
+  await page.screenshot({ path: ".runtime-test/ui-usage-overview.png" });
+  await usage.getByRole("button", { name: /Claude account 1/ }).click();
+  await expect(usage.locator(".usage-detail")).toContainText(
+    "during a run with this account",
+  );
+  await usage.getByRole("button", { name: "Close usage" }).click();
+  pass("Ten accounts use compact rows and only one detail is expanded");
   await page
     .locator(".quota-strip")
     .getByRole("button", { name: /Claude Code/ })
@@ -415,6 +604,11 @@ try {
     .locator(".pane-report")
     .filter({ hasText: "Scrollable review" });
   const reportScroll = reportPane.locator("..");
+  await expect(reportPane.getByRole("heading", { name: "Scrollable review" })).toBeInViewport();
+  await expect(reportPane.getByText("Verification:", { exact: true })).toBeInViewport();
+  assert.equal(await reportScroll.evaluate((el) => el.scrollTop), 0);
+  await page.screenshot({ path: ".runtime-test/ui-report-summary.png" });
+  pass("A long final report opens at its summary");
   await reportScroll.evaluate((el) => {
     el.scrollTop = 250;
   });
@@ -425,6 +619,7 @@ try {
     .poll(() => reportScroll.evaluate((el) => el.scrollTop))
     .toBeLessThan(beforeScroll);
   pass("Wheel over a Markdown table scrolls its report pane upward");
+  await page.unroute("**/v1/state");
   await page.setViewportSize({ width: 680, height: 540 });
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const modal = await page.getByRole("dialog").boundingBox();
@@ -460,6 +655,20 @@ try {
   pass(
     "Clarifications remain visible in the council pane and ask for input without extra review rounds",
   );
+  await req("/jobs", {
+    request: "COMPACT_REPORT_FIXTURE Summarize in one sentence.",
+    request_id: "ui-compact-report",
+  });
+  const shortReport = page.locator(".agent-pane").last();
+  const reviewDetails = shortReport.getByText("Review details", { exact: true });
+  const supportingEvidence = shortReport.getByText("The reviewer checked the file.", { exact: false });
+  await expect(shortReport.getByText("The status changed to ready.", { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(reviewDetails).toBeVisible();
+  await expect(supportingEvidence).toBeHidden();
+  await page.screenshot({ path: ".runtime-test/ui-compact-report.png" });
+  await reviewDetails.click();
+  await expect(supportingEvidence).toBeVisible();
+  pass("Short requests show the answer first and expand the review evidence on demand");
   assert.deepEqual(errors, [], "Unexpected browser exceptions");
   pass("No unhandled browser errors");
   console.log(`${checks} UI checks passed`);
@@ -476,9 +685,9 @@ try {
 } finally {
   await browser?.close();
   web?.kill();
-  if (existsSync(join(root, "runtime.json"))) {
+  if (existsSync(join(data, "runtime.json"))) {
     try {
-      const r = JSON.parse(readFileSync(join(root, "runtime.json"), "utf8"));
+      const r = JSON.parse(readFileSync(join(data, "runtime.json"), "utf8"));
       process.kill(r.pid);
     } catch {}
   }

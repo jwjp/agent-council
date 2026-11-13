@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-fn auth_home() -> PathBuf {
+pub(crate) fn auth_home() -> PathBuf {
     std::env::var_os("AGENT_COUNCIL_AUTH_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| crate::model::home().into())
@@ -287,11 +287,17 @@ fn secret<'a>(v: &'a Value, key: &str) -> Result<&'a str> {
         .filter(|s| !s.is_empty())
         .context("No saved sign-in. Open the agent and sign in.")
 }
-pub async fn fetch(agent: &str, folder: &str) -> Result<Value> {
+pub(crate) fn claude_config_dir() -> PathBuf {
+    std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| auth_home().join(".claude"))
+}
+
+pub async fn fetch(agent: &str, folder: &str, profile_dir: Option<&str>) -> Result<Value> {
     if ["codex", "agy"].contains(&agent) {
         return Ok(normalize(
             agent,
-            &crate::engine::read_limits(agent, folder).await?,
+            &crate::engine::read_limits(agent, folder, profile_dir).await?,
             "Local CLI",
         ));
     }
@@ -303,11 +309,21 @@ pub async fn fetch(agent: &str, folder: &str) -> Result<Value> {
     let mut auth_source = None;
     let data = match agent {
         "claude" => {
-            let root = std::env::var_os("CLAUDE_CONFIG_DIR")
+            let root = profile_dir
                 .map(PathBuf::from)
-                .unwrap_or_else(|| auth_home().join(".claude"));
-            let credentials = read(root.join(".credentials.json"))?;
-            let token = secret(&credentials["claudeAiOauth"], "accessToken")?;
+                .unwrap_or_else(claude_config_dir);
+            let credentials = read(root.join(".credentials.json"));
+            let token = match credentials.as_ref() {
+                Ok(credentials) => secret(&credentials["claudeAiOauth"], "accessToken"),
+                Err(error) => Err(anyhow::anyhow!("{error}")),
+            };
+            let token = match token {
+                Ok(token) => token,
+                Err(_) if profile_dir.is_some() => {
+                    return Ok(json!({"status":"cli_only","windows":[],"source":"Claude Code CLI"}))
+                }
+                Err(error) => return Err(error),
+            };
             checked(
                 client
                     .get("https://api.anthropic.com/api/oauth/usage")

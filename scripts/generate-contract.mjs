@@ -11,16 +11,38 @@ const responses = {
   400: error,
   401: { ...error, description: "Missing or invalid bearer token" },
 };
+const profileName = {
+  ...string,
+  pattern: "^(claude|codex)-[a-z0-9][a-z0-9_-]{0,31}$",
+};
+const agent = {
+  anyOf: [
+    { enum: ["claude", "codex", "grok", "agy", "agent", "gemini"] },
+    profileName,
+  ],
+};
 const settings = object({
   folder: { ...string, description: "Existing project directory" },
   coder: {
-    type: ["string", "null"],
-    enum: ["claude", "codex", "grok", "agy", "agent", "gemini", null],
+    anyOf: [...agent.anyOf, { type: "null" }],
   },
   reviewers: {
     type: "array",
     uniqueItems: true,
-    items: { enum: ["claude", "codex", "grok", "agy", "agent", "gemini"] },
+    items: agent,
+  },
+  agent_profiles: {
+    type: "array",
+    description:
+      "Additional Claude Code and Codex sign-ins. Configuration paths are local to the desktop and omitted from phone snapshots.",
+    items: {
+      ...object({
+        name: profileName,
+        config_dir: string,
+        display_name: { ...string, minLength: 1, maxLength: 40 },
+      }),
+      required: ["name", "config_dir"],
+    },
   },
   references: { type: "array", items: string },
   language: { enum: ["English", "한국어"] },
@@ -29,13 +51,51 @@ const settings = object({
   draft: string,
 });
 const body = (schema) => ({ required: true, content: json(schema) });
+const agentAccount = {
+  ...object({
+    name: { anyOf: [{ enum: ["claude", "codex"] }, profileName] },
+    config_dir: string,
+    display_name: string,
+    status: {
+      enum: [
+        "connected",
+        "sign_in_required",
+        "cli_unavailable",
+        "check_failed",
+      ],
+    },
+    login_command: string,
+    login_shell: { enum: ["powershell", "macos_terminal", "posix_terminal"] },
+    account_email: {
+      ...string,
+      description:
+        "Claude.ai sign-in email, when reported. Desktop account endpoints only.",
+    },
+  }),
+  required: ["name", "config_dir", "status"],
+};
+const agentAccountResponse = {
+  ...responses,
+  200: {
+    description: "Local agent account status",
+    content: json(agentAccount),
+  },
+};
+const accountProvider = [
+  {
+    name: "provider",
+    in: "path",
+    required: true,
+    schema: { enum: ["claude", "codex"] },
+  },
+];
 const paths = {
   "/health": { get: { operationId: "health", responses } },
   "/state": {
     get: {
       operationId: "snapshot",
       description:
-        "Settings, current project messages, latest job, bounded activity snapshot, usage, durable cursor and running_jobs count. Activity retains each agent's latest complete note and up to 40 events of each milestone/tool/error kind; full durable history remains available through SSE replay.",
+        "Settings, current project messages, latest job, bounded activity snapshot, usage, durable cursor and running_jobs count. A council message can include report_summary as a prefix of its full Markdown text. Activity retains each agent's latest complete note and up to 40 events of each milestone/tool/error kind; full durable history remains available through SSE replay.",
       responses,
     },
   },
@@ -44,6 +104,49 @@ const paths = {
       operationId: "saveSettings",
       requestBody: body(settings),
       responses,
+    },
+  },
+  "/{provider}/accounts": {
+    parameters: accountProvider,
+    get: {
+      operationId: "discoverAgentAccounts",
+      responses: {
+        ...responses,
+        200: {
+          description: "Default, registered and discovered local accounts",
+          content: json({ type: "array", items: agentAccount }),
+        },
+      },
+    },
+  },
+  "/{provider}/accounts/check": {
+    parameters: accountProvider,
+    post: {
+      operationId: "checkAgentAccount",
+      requestBody: body({
+        ...object({ config_dir: string }),
+        required: ["config_dir"],
+      }),
+      responses: agentAccountResponse,
+    },
+  },
+  "/{provider}/accounts/prepare": {
+    parameters: accountProvider,
+    post: {
+      operationId: "prepareAgentAccount",
+      requestBody: {
+        content: json(
+          object({
+            request_id: {
+              ...string,
+              format: "uuid",
+              description:
+                "Reuse to recover the same account folder after a lost response.",
+            },
+          }),
+        ),
+      },
+      responses: agentAccountResponse,
     },
   },
   "/draft": {
@@ -100,6 +203,52 @@ const paths = {
         ...responses,
         409: {
           description: "A different job is already running for this project",
+        },
+      },
+    },
+  },
+  "/jobs/{id}/changes": {
+    get: {
+      operationId: "jobChanges",
+      description:
+        "Read the bounded Git working-tree or supported project text-file comparison saved when a job ends. Returns null for jobs without a saved comparison.",
+      parameters: [
+        {
+          in: "path",
+          name: "id",
+          required: true,
+          schema: { ...string, format: "uuid" },
+        },
+      ],
+      responses: {
+        ...responses,
+        200: {
+          description: "Saved comparison or null",
+          content: json({
+            anyOf: [
+              { type: "null" },
+              {
+                ...object({
+                  available: { type: "boolean" },
+                  source: { enum: ["git", "folder"] },
+                  skipped: { type: "integer", minimum: 0 },
+                  files: {
+                    type: "array",
+                    items: {
+                      ...object({
+                        path: string,
+                        kind: { enum: ["added", "modified", "deleted"] },
+                        patch: { type: ["string", "null"] },
+                        truncated: { type: "boolean" },
+                      }),
+                      required: ["path", "kind", "patch", "truncated"],
+                    },
+                  },
+                }),
+                required: ["available", "skipped", "files"],
+              },
+            ],
+          }),
         },
       },
     },
