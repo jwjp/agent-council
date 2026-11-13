@@ -4,7 +4,10 @@ A local workspace for coding agents and independent review. **Tauri 2 + React/Ty
 
 ## Install
 
-Download the Windows portable ZIP from [Releases](https://github.com/jwjp/agent-council/releases/latest), extract it and open `AgentCouncil.exe`. `Launch Agent Council.cmd` also launches the app, including from a source checkout with a built executable. Supported agent CLIs must be installed and signed in under your Windows user account and available on PATH.
+- **Microsoft Store** — [Install Agent Council for Windows 11 x64](https://apps.microsoft.com/detail/9P6TSDW87WP3). The free Store edition receives updates through Microsoft Store.
+- **Portable** — Download the [stable ZIP](https://github.com/jwjp/agent-council/releases/latest) or [3.2.0-beta.4 preview](https://github.com/jwjp/agent-council/releases/tag/v3.2.0-beta.4). Extract the ZIP and open `AgentCouncil.exe` or `Launch Agent Council.cmd`. Portable builds are unsigned.
+
+Install at least one supported agent CLI separately, sign in under your Windows account and make sure the CLI is on PATH.
 
 Open **Agents** to choose an optional lead agent and optional reviewers. The composer offers direct lead and execution permission selectors. Click the project name to select a folder. The top menu or **Ctrl+,** opens workspace and appearance settings, including reference folders, English/Korean, and light/dark/system appearance. Enter sends; Shift+Enter inserts a line. Korean IME composition is handled by WebView2, and Enter during composition does not send a request.
 
@@ -16,30 +19,30 @@ Open **Agents** to choose an optional lead agent and optional reviewers. The com
 - Reports render Markdown, code and tables. Split panes show different agents; activity logs retain phases, tools, and paced notes. Scrolling up does not force the reader back to the bottom.
 - The beta.2 workflow displays completed reviews immediately and shows real round/member counts through review, optional correction/recheck, discussion and synthesis. A lead question waits for your answer; failed participants are not repeatedly called in later rounds. New opinions can be opened without losing your reading position.
 - Cancel stops the running CLI process tree on Windows. Job objects also close child processes if the Rust runtime exits. Interrupted work is marked **interrupted**, not silently restarted.
-- Messages, project drafts, job state and events persist in SQLite under `%LOCALAPPDATA%\AgentCouncil`. Existing v2 settings and per-folder chat JSON are imported without deleting the originals. Recent transcript excerpts carry into follow-up requests.
+- Messages, project drafts, job state and events persist in SQLite. Portable builds use `%LOCALAPPDATA%\AgentCouncil` and import existing v2 settings and per-folder chat JSON while keeping the originals. The Store edition keeps its own data in the Windows package's `LocalState` folder. Recent transcript excerpts carry into follow-up requests.
 - The bottom usage strip shows **account quota used** and reset countdowns. Click any agent for its quota windows, source, refresh time and separately reported project token counts. Existing local CLI/IDE logins are reused: Codex and Antigravity query their CLIs; Claude, Grok, Cursor and Gemini query the providers' usage endpoints. Credentials remain in memory and are not returned to the UI. Missing sign-ins, unavailable quotas and errors are explicit; token counts are never substituted for account percentages. Provider endpoint changes may require adapter updates. See [protocol acknowledgments](docs/THIRD_PARTY_NOTICES.md).
 
 ## Reading and usage
 
 The footer labels the period of the highest reported usage percentage (`5h`, `wk`, `mo` or a model group). The popover shows every reported window. A CLI's partial limit event preserves other known windows; lower stale snapshots for the same period are ignored. Failed refreshes retain the last known quota with an explicit stale label. Usage refreshes after work finishes. Cursor IDE quota access does not imply Cursor Agent CLI is signed in. Use `cursor-agent.cmd login` on Windows or `cursor-agent login` on macOS/Linux; Grok can also install the generic `agent` name. See [CLI troubleshooting](docs/CLI_TROUBLESHOOTING.md). Collision prevention and corrected UI commands ship in beta.2; the older beta.1 download is unchanged.
 
-In the current source build, open **Agents → Claude accounts** or **Codex accounts** to connect an existing CLI sign-in or prepare a separate login. Each account can lead or review and has its own results, project tokens and available account limits. The usage panel shows one row per account and expands to all reported limits. [Account setup](docs/CLI_TROUBLESHOOTING.md#use-multiple-claude-code-sign-ins)
+In beta.4, open **Agents → Claude accounts** or **Codex accounts** to connect an existing CLI sign-in or prepare a separate login. Each account can lead or review and has its own results, project tokens and available account limits. The usage panel shows one row per account and expands to all reported limits. [Account setup](docs/CLI_TROUBLESHOOTING.md#use-multiple-claude-code-sign-ins)
 
 Working notes keep complete snapshots rather than the last few characters. Choose **Read full note** for Markdown, tables and clickable file references. Project/reference file links open a read-only preview at the specified `:line` or `#Lline`, including Windows paths. Previews cap rendering at 512 KiB and 3,000 lines, reject binary content and enforce configured folder boundaries. Final reports remain separate from bounded working notes.
 
-In the current source build, the final report includes the engine's counts of lead and individual reviewer responses. When a request explicitly asks for a short answer, the desktop and companion show the answer first and let the reader expand the review details.
+In beta.4, the final report includes the engine's counts of lead and individual reviewer responses. When a request explicitly asks for a short answer, the desktop and companion show the answer first and let the reader expand the review details.
 
 **Changes from this run** in the desktop final report opens a read-only file diff against the start of the request. Git projects use tracked and non-ignored untracked files. Other folders use supported source, documentation and configuration files and skip hidden entries, common generated folders, and nested repositories. Captures are bounded and can be partial or unavailable.
 
 ## Updates
 
-Choose **App menu → Check for updates**. Installation is manual, verifies GitHub's SHA-256 asset digest, and restarts the app. Finish or cancel all work before updating. An upgrade from the Python app can use its existing update button to install the new executable.
+For the Store edition, use Microsoft Store to check for updates. For the stable portable edition, choose **App menu → Check for updates**. The portable updater verifies GitHub's SHA-256 asset digest. To update the preview, download the latest preview ZIP. Finish any active work before updating.
 
 ## Mobile web companion preview
 
 The Rust engine exposes an authenticated, versioned HTTP/SSE interface on an ephemeral **loopback-only** port. Durable event IDs support replay after a client disconnect. See [runtime protocol](docs/runtime-api.md) and the [OpenAPI contract](docs/openapi.json).
 
-The [**3.2.0-beta.3 Windows preview**](https://github.com/jwjp/agent-council/releases/tag/v3.2.0-beta.3) includes **App menu → Connect a phone**: an opt-in gateway with expiring QR invitations, host approval, revocable devices and a responsive browser client. Phones can continue an approved project's conversation, inspect per-agent results/progress/files/usage and cancel their own requests. Full-access agents still run with host permissions; project routing does not create an OS sandbox. [Setup and verification limits](docs/MOBILE_COMPANION.md). Use the preview ZIP directly to update between betas; the stable updater does not select prereleases.
+The Store edition and the [**3.2.0-beta.4 Windows preview**](https://github.com/jwjp/agent-council/releases/tag/v3.2.0-beta.4) include **App menu → Connect a phone**. Pairing uses expiring QR invitations, host approval and revocable device access. Phones can continue an approved project's conversation, inspect per-agent results, progress, files and usage, and cancel their own requests. Full-access agents still run with host permissions. [Setup and verification limits](docs/MOBILE_COMPANION.md).
 
 Tailscale Serve HTTPS must be configured by the user, and a disabled tailnet may require account-owner web activation. The app does not publish any port automatically. Stable v3.1.0 has no companion UI; native mobile distribution and background push are not available. The separate [iPhone-first native shell](docs/NATIVE_COMPANION.md) has passed iOS simulator build/launch and Keychain tests; it does not change the published desktop preview.
 
@@ -53,7 +56,7 @@ Coding agents should start with [AGENTS.md](AGENTS.md) and [shared project statu
 
 CI uses Node 22 LTS for development/build tools; Node 24's bundled Fetch currently has a [reported macOS socket crash](https://github.com/nodejs/undici/issues/6075). The shipped Rust applications do not require Node.
 
-The Windows MSIX compatibility trial passed installation, fixture CLI execution and an idle package upgrade. An unsigned x64 candidate uses the assigned Microsoft Store identity. Store submission and certification are pending. See the [Store packaging and trial results](docs/STORE_DISTRIBUTION.md).
+The public Microsoft Store package was verified on Windows 11 x64, including installation, startup and a read-only Claude Code request. See the [Store packaging and trial results](docs/STORE_DISTRIBUTION.md).
 
 Planned macOS and native mobile roles, shared-code boundaries and validation milestones are described in the [cross-platform roadmap](docs/CROSS_PLATFORM_ROADMAP.md). See the companion preview above for browser support and remaining device/route validation.
 
