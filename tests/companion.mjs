@@ -9,9 +9,9 @@ import {
   readFileSync,
   statSync,
   existsSync,
-  rmSync,
   readdirSync,
 } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, delimiter } from "node:path";
 import { createServer } from "node:net";
@@ -478,10 +478,10 @@ try {
     }
   }
   assert.ok(root.startsWith(join(tmpdir(), "council-companion-test-")));
-  rmSync(root, {
+  await rm(root, {
     recursive: true,
     force: true,
-    maxRetries: 10,
-    retryDelay: 100,
+    maxRetries: 15,
+    retryDelay: 150,
   });
 }
