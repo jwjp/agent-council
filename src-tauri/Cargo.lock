@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "agent-council"
-version = "3.2.0-beta.3"
+version = "3.2.0-beta.4"
 dependencies = [
  "council-host",
  "open",
@@ -615,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "council-core"
-version = "3.2.0-beta.3"
+version = "3.2.0-beta.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -623,7 +623,7 @@ dependencies = [
 
 [[package]]
 name = "council-host"
-version = "3.2.0-beta.3"
+version = "3.2.0-beta.4"
 dependencies = [
  "aes-gcm",
  "anyhow",
