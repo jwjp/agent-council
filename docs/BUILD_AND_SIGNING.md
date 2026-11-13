@@ -22,9 +22,11 @@ No elapsed-time guarantee is established for provider review or hosted builds. S
 - Sign the final executable before ZIP creation. If an installer is later shipped, sign the application and the installer as appropriate. Do not modify signed executable bytes afterward. Verify the signature and the hashes of the actual uploaded assets.
 - The current updater in `src-tauri/crates/council-host/src/updates.rs` checks GitHub's SHA-256 asset digest. Do not describe that checksum check as Authenticode verification or claim the current EXE has a trusted signature. In-place installation is Windows-only; other hosts reject it before downloading a Windows executable.
 
-## Provider readiness — last checked 2026-11-06
+## Distribution channel and signing providers
 
-Microsoft Store MSIX is a separate distribution channel. Microsoft provides package signing after certification. Store-listed MSI/EXE installers still need publisher signing. The unsigned Windows compatibility trial built and installed two packages using the beta.3 executable. The current app routes installed Windows packages to Store updates and guards the portable install command. The owner submitted the assigned-identity MSIX on 2026-11-12. Certification, publication and Store servicing remain open. See [Store distribution and trial evidence](STORE_DISTRIBUTION.md).
+Microsoft Store MSIX is a separate distribution channel. Microsoft provides package signing after certification. Store-listed MSI/EXE installers still need publisher signing. On 2026-11-13, the public Store listing and installation of Store-signed version `3.2.0.0` were verified. The installed app reported the Windows package update channel. Store servicing across versions remains unverified. See [Store distribution and trial evidence](STORE_DISTRIBUTION.md).
+
+The following third-party provider conditions were last checked on 2026-11-06.
 
 - **SignPath Foundation:** free for qualifying projects, subject to review of license, reputation and verifiable source-to-binary provenance. Requires a signing policy, team roles/approvers, MFA and appropriate privacy information. Its terms require manual approval for each release. No application or approval is recorded for this project.
 - **OSSign:** official site currently says new applications are suspended and requires at least six months of activity on the account, organization and project. Recheck when considering it; do not assume the suspension or eligibility conditions remain unchanged.
