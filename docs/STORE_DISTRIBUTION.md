@@ -1,6 +1,6 @@
 # Microsoft Store distribution assessment
 
-Updated 2026-11-11. The owner supplied the reserved Agent Council product identity from Partner Center. An unsigned Windows x64 submission candidate has been built with that identity. Store upload and certification remain open.
+Updated 2026-11-12. The owner submitted the validated Agent Council `3.2.0.0` x64 MSIX in Submission 1. The Partner Center screenshot shows `In certification` at `Pre-processing` with automatic publishing after certification.
 
 ## Recommendation and costs
 
@@ -32,7 +32,7 @@ npm run tauri -- build --no-bundle -- --locked
 
 The candidate uses package version `3.2.0.0` with the current `3.2.0-beta.3` app, targets Windows 11 x64 and starts the application directly. It uses the confirmed Store publisher and the Store version convention with a zero fourth component. There is no trial launcher, test identity marker, auth fixture or CLI bundled in the package. [Store package requirements](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/app-package-requirements).
 
-`AgentCouncil-Store-3.2.0.0-x64.msix` is a single unsigned package for Partner Center's **Packages** page. The Store lists `.msix` as an accepted upload format. Windows App Certification Kit, a Store-signed installation and Partner Center validation remain open. [Upload MSIX packages](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/device-families) · [Candidate verification](verification.md#store-msix-submission-candidate--2026-11-11).
+The uploaded `AgentCouncil-Store-3.2.0.0-x64.msix` shows `Validated` and **Packages** shows `Complete` in the owner's Partner Center screenshot. Windows App Certification Kit and Store-signed installation remain open. [Upload MSIX packages](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/device-families) · [Candidate verification](verification.md#store-msix-submission-candidate--2026-11-11).
 
 ## Compatibility trial results
 
@@ -70,10 +70,10 @@ The [current-source Windows MSIX run](https://github.com/jwjp/agent-council/acti
 | Updates — `updates.rs` | Verify Store delivery and its effect on active jobs under the final package identity. Package updates and the portable GitHub updater now use separate paths. |
 | WebView2 / manifest / assets | The candidate manifest and package family were verified locally. Validate Evergreen WebView2 and startup of the Store-signed package on a clean Windows 11 machine. |
 
-Store policies allow disclosed external software dependencies, but require a testable product. Prepare clear CLI/account prerequisites and certification instructions, plus an accurate privacy policy covering provider calls, automatic quota queries and local credential handling. Review the applicable capabilities and AI-content requirements before submission; approval is not established by this assessment. [Store policies](https://learn.microsoft.com/en-us/windows/apps/publish/store-policies).
+Store policies require external software dependencies to be disclosed at the start of the description. The listing draft identifies live generative AI, and the submission needs the matching product declaration. The certification draft includes CLI/account prerequisites, a test sequence and the capability justification. The privacy draft documents provider calls, automatic quota queries and local credential handling. Before submission, review how the current app obtains consent for third-party processing and confirm the developer's route for receiving and acting on reports of inappropriate AI output. [Store policies](https://learn.microsoft.com/en-us/windows/apps/publish/store-policies).
 
 ## Next steps
 
-1. Prepare listing, privacy and certification test instructions, including external CLI prerequisites and the `runFullTrust` capability's purpose.
-2. Run certification checks and validate the candidate in Partner Center when the owner authorizes the upload. Use a Store-signed test distribution to check a clean Windows 11 machine, existing CLI sign-ins and servicing during active work.
-3. Decide whether the first Store release should offer a portable-data import. Keep the trial and Store package identities separate.
+1. Check the certification result in Partner Center for product `9P6TSDW87WP3`. Review the report if Microsoft requests changes. [MSIX certification process](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/app-certification-process).
+2. After publication, confirm the public listing and test installation, startup and a request with a supported signed-in CLI on Windows 11 x64. Store-signed updating during active work remains a separate check.
+3. Keep the [English/Korean listing](STORE_LISTING.md), [privacy policy](PRIVACY.md) and [certification notes](STORE_CERTIFICATION.md) available for the certification response or future updates. The last testing screenshot showed an empty Credentials section. Decide whether a later release should offer a portable-data import.

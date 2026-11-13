@@ -24,12 +24,12 @@ No elapsed-time guarantee is established for provider review or hosted builds. S
 
 ## Provider readiness — last checked 2026-11-06
 
-Microsoft Store MSIX is a separate candidate distribution channel. Microsoft provides package signing after certification. Store-listed MSI/EXE installers still need publisher signing. The unsigned Windows compatibility trial built and installed two packages using the beta.3 executable. The current app routes installed Windows packages to Store updates and guards the portable install command. An unsigned submission candidate now uses the assigned Store identity. Actual Store servicing, upload and certification remain open. See [Store distribution and trial evidence](STORE_DISTRIBUTION.md).
+Microsoft Store MSIX is a separate distribution channel. Microsoft provides package signing after certification. Store-listed MSI/EXE installers still need publisher signing. The unsigned Windows compatibility trial built and installed two packages using the beta.3 executable. The current app routes installed Windows packages to Store updates and guards the portable install command. The owner submitted the assigned-identity MSIX on 2026-11-12. Certification, publication and Store servicing remain open. See [Store distribution and trial evidence](STORE_DISTRIBUTION.md).
 
 - **SignPath Foundation:** free for qualifying projects, subject to review of license, reputation and verifiable source-to-binary provenance. Requires a signing policy, team roles/approvers, MFA and appropriate privacy information. Its terms require manual approval for each release. No application or approval is recorded for this project.
 - **OSSign:** official site currently says new applications are suspended and requires at least six months of activity on the account, organization and project. Recheck when considering it; do not assume the suspension or eligibility conditions remain unchanged.
 - **Agent Council:** the public repository was created on 2026-11-04. There is no project-level OSI license yet; `docs/ORCA_LICENSE.txt` covers the upstream notice only. The owner must decide the project's license before an agent adds a grant of rights.
-- Release signing/provenance automation and formal code-signing/privacy policies remain to be implemented. A privacy policy must accurately describe automatic account-usage queries, provider calls and existing-login credential handling; do not substitute an inaccurate generic promise of no network traffic.
+- Release signing/provenance automation and a formal code-signing policy remain to be implemented. The [Store privacy draft](PRIVACY.md) covers automatic account-usage queries, provider calls and existing-login credential handling. Review it before providing the policy text or a public URL in Partner Center.
 
 ## Official references
 
